@@ -89,9 +89,9 @@
     </dependencies>
     
     <scm>
-        <connection>scm:svn:svn+ssh://svn.creatis.insa-lyon.fr/svn/vip/GASW-Plugins/GASW-Healing-Plugin</connection>
-        <developerConnection>scm:svn:svn+ssh://svn.creatis.insa-lyon.fr/svn/vip/GASW-Plugins/GASW-Healing-Plugin</developerConnection>
-        <url>svn+ssh://svn.creatis.insa-lyon.fr/svn/vip/GASW-Plugins/GASW-Healing-Plugin</url>
+        <connection>scm:svn:svn+ssh://svn.creatis.insa-lyon.fr/svn/vip/GASW-Plugins/GASW-Healing-Plugin/trunk</connection>
+        <developerConnection>scm:svn:svn+ssh://svn.creatis.insa-lyon.fr/svn/vip/GASW-Plugins/GASW-Healing-Plugin/trunk</developerConnection>
+        <url>svn+ssh://svn.creatis.insa-lyon.fr/svn/vip/GASW-Plugins/GASW-Healing-Plugin/trunk</url>
     </scm>
 
 </project>
