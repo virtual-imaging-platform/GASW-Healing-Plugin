@@ -35,40 +35,147 @@
 package fr.insalyon.creatis.gasw.plugin.listener.healing;
 
 import fr.insalyon.creatis.gasw.GaswException;
-import fr.insalyon.creatis.gasw.GaswInput;
 import fr.insalyon.creatis.gasw.GaswOutput;
 import fr.insalyon.creatis.gasw.bean.Job;
 import fr.insalyon.creatis.gasw.bean.JobMinorStatus;
+import fr.insalyon.creatis.gasw.dao.DAOException;
+import fr.insalyon.creatis.gasw.dao.DAOFactory;
+import fr.insalyon.creatis.gasw.dao.JobMinorStatusDAO;
+import fr.insalyon.creatis.gasw.execution.GaswMinorStatus;
 import fr.insalyon.creatis.gasw.plugin.ListenerPlugin;
+import fr.insalyon.creatis.gasw.plugin.listener.healing.execution.CommandState;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import net.xeoh.plugins.base.annotations.PluginImplementation;
+import org.apache.log4j.Logger;
 
 /**
  *
  * @author Rafael Ferreira da Silva
  */
+@PluginImplementation
 public class HealingListener implements ListenerPlugin {
 
+    private static final Logger logger = Logger.getLogger("fr.insalyon.creatis.gasw");
+    private volatile Map<String, CommandState> commandsMap;
+
+    /**
+     *
+     * @return
+     */
     @Override
     public String getPluginName() {
+
         return HealingConstants.NAME;
     }
 
+    /**
+     *
+     * @throws GaswException
+     */
     @Override
-    public void jobSubmitted(GaswInput gaswInput) throws GaswException {
-        throw new UnsupportedOperationException("Not supported yet.");
+    public void load() throws GaswException {
+
+        logger.info("Loading Self-Healing GASW Plugin");
+        HealingConfiguration.getInstance();
+        commandsMap = new HashMap<String, CommandState>();
     }
 
+    /**
+     *
+     * @return @throws GaswException
+     */
+    @Override
+    public List<Class> getPersistentClasses() throws GaswException {
+
+        List<Class> list = new ArrayList<Class>();
+        return list;
+    }
+
+    /**
+     *
+     * @param gaswInput
+     * @throws GaswException
+     */
+    @Override
+    public void jobSubmitted(Job job) throws GaswException {
+
+        String command = job.getCommand();
+        if (!commandsMap.containsKey(command)) {
+            commandsMap.put(command, new CommandState(command));
+        }
+    }
+
+    /**
+     *
+     * @param gaswOutput
+     * @throws GaswException
+     */
     @Override
     public void jobFinished(GaswOutput gaswOutput) throws GaswException {
-        throw new UnsupportedOperationException("Not supported yet.");
     }
 
+    /**
+     *
+     * @param job
+     * @throws GaswException
+     */
     @Override
     public void jobStatusChanged(Job job) throws GaswException {
-        throw new UnsupportedOperationException("Not supported yet.");
     }
 
+    /**
+     *
+     * @param jobMinorStatus
+     * @throws GaswException
+     */
     @Override
     public void jobMinorStatusReported(JobMinorStatus jobMinorStatus) throws GaswException {
-        throw new UnsupportedOperationException("Not supported yet.");
+
+        try {
+            logger.info("[Healing] Minor Status Reported: " + jobMinorStatus.getJob().getId() + " - " + jobMinorStatus.getStatus().name());
+            Job job = jobMinorStatus.getJob();
+            CommandState cs;
+            if (commandsMap.containsKey(job.getCommand())) {
+                cs = commandsMap.get(job.getCommand());
+            } else {
+                cs = new CommandState(job.getCommand());
+                commandsMap.put(job.getCommand(), cs);
+            }
+
+            JobMinorStatusDAO minorStatusDAO = DAOFactory.getDAOFactory().getJobMinorStatusDAO();
+
+            switch (jobMinorStatus.getStatus()) {
+                case Inputs:
+                    cs.addSetupTime(minorStatusDAO.getDateDiff(job.getId(), GaswMinorStatus.Started, GaswMinorStatus.Inputs));
+                    break;
+                case Application:
+                    cs.addDownloadTime(minorStatusDAO.getDateDiff(job.getId(), GaswMinorStatus.Inputs, GaswMinorStatus.Application));
+                    break;
+                case Outputs:
+                    cs.addExecutionTime(minorStatusDAO.getDateDiff(job.getId(), GaswMinorStatus.Application, GaswMinorStatus.Outputs));
+                    break;
+                case Finished:
+                    cs.addUploadTime(minorStatusDAO.getDateDiff(job.getId(), GaswMinorStatus.Outputs, GaswMinorStatus.Finished));
+                    break;
+                default:
+            }
+        } catch (DAOException ex) {
+            // do nothing
+        }
+    }
+
+    /**
+     *
+     * @throws GaswException
+     */
+    @Override
+    public void terminate() throws GaswException {
+
+        for (CommandState cs : commandsMap.values()) {
+            cs.terminate();
+        }
     }
 }

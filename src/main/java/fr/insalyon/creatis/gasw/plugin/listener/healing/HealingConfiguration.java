@@ -34,14 +34,54 @@
  */
 package fr.insalyon.creatis.gasw.plugin.listener.healing;
 
+import fr.insalyon.creatis.gasw.GaswConfiguration;
+import fr.insalyon.creatis.gasw.GaswException;
+import org.apache.commons.configuration.ConfigurationException;
+import org.apache.commons.configuration.PropertiesConfiguration;
+import org.apache.log4j.Logger;
+
 /**
  *
  * @author Rafael Ferreira da Silva
  */
-public class HealingConstants {
+public class HealingConfiguration {
 
-    public final static String NAME = "Self-Healing";
-    // Labels
-    public final static String LAB_SLEEP_TIME = "plugin.healing.sleeptime";
-    public final static String LAB_BLOCKED_COEFFICIENT = "plugin.healing.blocked.coefficient";
+    private static final Logger logger = Logger.getLogger("fr.insalyon.creatis.gasw");
+    private static HealingConfiguration instance;
+    private int sleepTime;
+    private double blockedCoefficient;
+
+    public static HealingConfiguration getInstance() throws GaswException {
+
+        if (instance == null) {
+            instance = new HealingConfiguration();
+        }
+        return instance;
+    }
+
+    private HealingConfiguration() throws GaswException {
+
+        try {
+            PropertiesConfiguration config = GaswConfiguration.getInstance().getPropertiesConfiguration();
+
+            sleepTime = config.getInt(HealingConstants.LAB_SLEEP_TIME, 5) * 1000;
+            blockedCoefficient = config.getDouble(HealingConstants.LAB_BLOCKED_COEFFICIENT, 2);
+
+            config.setProperty(HealingConstants.LAB_SLEEP_TIME, sleepTime / 1000);
+            config.setProperty(HealingConstants.LAB_BLOCKED_COEFFICIENT, blockedCoefficient);
+
+            config.save();
+
+        } catch (ConfigurationException ex) {
+            logger.error(ex);
+        }
+    }
+
+    public int getSleepTime() {
+        return sleepTime;
+    }
+
+    public double getBlockedCoefficient() {
+        return blockedCoefficient;
+    }
 }
