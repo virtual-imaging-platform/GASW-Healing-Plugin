@@ -4,7 +4,7 @@
 
     <groupId>fr.insalyon.creatis</groupId>
     <artifactId>gasw-healing-plugin</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <version>1.0</version>
     <packaging>jar</packaging>
 
     <name>GASW-Healing-Plugin</name>
@@ -87,9 +87,9 @@
     </dependencies>
     
     <scm>
-        <connection>scm:svn:svn+ssh://svn.creatis.insa-lyon.fr/svn/vip/GASW-Plugins/GASW-Healing-Plugin/tags/releases/r_1_0</connection>
-        <developerConnection>scm:svn:svn+ssh://svn.creatis.insa-lyon.fr/svn/vip/GASW-Plugins/GASW-Healing-Plugin/tags/releases/r_1_0</developerConnection>
-        <url>svn+ssh://svn.creatis.insa-lyon.fr/svn/vip/GASW-Plugins/GASW-Healing-Plugin/tags/releases/r_1_0</url>
+        <connection>scm:svn:svn+ssh://svn.creatis.insa-lyon.fr/svn/vip/GASW-Plugins/GASW-Healing-Plugin/tags/r_1_0</connection>
+        <developerConnection>scm:svn:svn+ssh://svn.creatis.insa-lyon.fr/svn/vip/GASW-Plugins/GASW-Healing-Plugin/tags/r_1_0</developerConnection>
+        <url>svn+ssh://svn.creatis.insa-lyon.fr/svn/vip/GASW-Plugins/GASW-Healing-Plugin/tags/r_1_0</url>
     </scm>
 
 </project>
