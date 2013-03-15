@@ -4,8 +4,6 @@
  * rafael.silva@creatis.insa-lyon.fr
  * http://www.rafaelsilva.com
  *
- * This software is a grid-enabled data-driven workflow manager and editor.
- *
  * This software is governed by the CeCILL  license under French law and
  * abiding by the rules of distribution of free software.  You can  use,
  * modify and/ or redistribute the software under the terms of the CeCILL
@@ -88,7 +86,7 @@ public class CommandState {
                 boolean unstartedReplica = false;
                 JobPhases bestJob = null;
 
-                for (Job job : jobDAO.getActiveJobsByFileName(runningJob.getFileName())) {
+                for (Job job : jobDAO.getActiveJobsByInvocationID(runningJob.getInvocationID())) {
                     if (job.getStatus() != GaswStatus.RUNNING
                             && job.getStatus() != GaswStatus.KILL
                             && job.getStatus() != GaswStatus.RESCHEDULE) {
