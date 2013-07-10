@@ -4,8 +4,6 @@
  * rafael.silva@creatis.insa-lyon.fr
  * http://www.rafaelsilva.com
  *
- * This software is a grid-enabled data-driven workflow manager and editor.
- *
  * This software is governed by the CeCILL  license under French law and
  * abiding by the rules of distribution of free software.  You can  use,
  * modify and/ or redistribute the software under the terms of the CeCILL
@@ -50,6 +48,7 @@ public class HealingConfiguration {
     private static HealingConfiguration instance;
     private int sleepTime;
     private double blockedCoefficient;
+    private int maxReplicas;
 
     public static HealingConfiguration getInstance() throws GaswException {
 
@@ -66,9 +65,11 @@ public class HealingConfiguration {
 
             sleepTime = config.getInt(HealingConstants.LAB_SLEEP_TIME, 5) * 1000;
             blockedCoefficient = config.getDouble(HealingConstants.LAB_BLOCKED_COEFFICIENT, 2);
+            maxReplicas = config.getInt(HealingConstants.LAB_MAX_REPLICAS, 3);
 
             config.setProperty(HealingConstants.LAB_SLEEP_TIME, sleepTime / 1000);
             config.setProperty(HealingConstants.LAB_BLOCKED_COEFFICIENT, blockedCoefficient);
+            config.setProperty(HealingConstants.LAB_MAX_REPLICAS, maxReplicas);
 
             config.save();
 
@@ -83,5 +84,9 @@ public class HealingConfiguration {
 
     public double getBlockedCoefficient() {
         return blockedCoefficient;
+    }
+
+    public int getMaxReplicas() {
+        return maxReplicas;
     }
 }

@@ -4,8 +4,6 @@
  * rafael.silva@creatis.insa-lyon.fr
  * http://www.rafaelsilva.com
  *
- * This software is a grid-enabled data-driven workflow manager and editor.
- *
  * This software is governed by the CeCILL  license under French law and
  * abiding by the rules of distribution of free software.  You can  use,
  * modify and/ or redistribute the software under the terms of the CeCILL
@@ -44,4 +42,5 @@ public class HealingConstants {
     // Labels
     public final static String LAB_SLEEP_TIME = "plugin.healing.sleeptime";
     public final static String LAB_BLOCKED_COEFFICIENT = "plugin.healing.blocked.coefficient";
+    public final static String LAB_MAX_REPLICAS = "plugin.healing.max.replicas";
 }

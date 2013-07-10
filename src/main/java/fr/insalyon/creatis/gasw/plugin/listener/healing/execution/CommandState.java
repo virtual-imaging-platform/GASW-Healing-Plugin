@@ -86,7 +86,9 @@ public class CommandState {
                 boolean unstartedReplica = false;
                 JobPhases bestJob = null;
 
-                for (Job job : jobDAO.getActiveJobsByInvocationID(runningJob.getInvocationID())) {
+                List<Job> jobs = jobDAO.getActiveJobsByInvocationID(runningJob.getInvocationID());
+
+                for (Job job : jobs) {
                     if (job.getStatus() != GaswStatus.RUNNING
                             && job.getStatus() != GaswStatus.KILL
                             && job.getStatus() != GaswStatus.RESCHEDULE) {
@@ -111,11 +113,8 @@ public class CommandState {
                         killReplica(job);
                     }
                 }
-                if (unstartedReplica) {
-                    continue;
-                }
-
-                if (bestJob != null && ((double) bestJob.getEstimation())
+                if (!unstartedReplica && jobs.size() < HealingConfiguration.getInstance().getMaxReplicas()
+                        && bestJob != null && ((double) bestJob.getEstimation())
                         / (setupMedian + inputMedian + executionMedian + outputMedian) >= blockedCoeff) {
 
                     Job job = bestJob.getJob();
