@@ -39,9 +39,9 @@ import fr.insalyon.creatis.gasw.dao.DAOFactory;
 import fr.insalyon.creatis.gasw.dao.JobDAO;
 import fr.insalyon.creatis.gasw.execution.GaswStatus;
 import fr.insalyon.creatis.gasw.plugin.listener.healing.HealingConfiguration;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+
+import java.util.*;
+
 import org.apache.log4j.Logger;
 
 /**
@@ -58,6 +58,8 @@ public class CommandState {
     private volatile List<Long> executionTimes;
     private volatile List<Long> outputTimes;
 
+    private Map<String,Long> lastLoggedTimes;
+
     public CommandState(String command) {
 
         this.command = command;
@@ -66,6 +68,8 @@ public class CommandState {
         this.inputTimes = new ArrayList<Long>();
         this.executionTimes = new ArrayList<Long>();
         this.outputTimes = new ArrayList<Long>();
+
+        this.lastLoggedTimes = new HashMap<>();
 
         new ReplicationMonitor().start();
     }
@@ -77,6 +81,8 @@ public class CommandState {
             long inputMedian = getMedianValue(inputTimes);
             long executionMedian = getMedianValue(executionTimes);
             long outputMedian = getMedianValue(outputTimes);
+            logTimesIfNecessary(setupMedian, inputMedian, executionMedian, outputMedian);
+            
             double blockedCoeff = HealingConfiguration.getInstance().getBlockedCoefficient();
 
             JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
@@ -105,11 +111,16 @@ public class CommandState {
 
                         if (jobPhases.getLastStatusCode() > bestJob.getLastStatusCode()
                                 && ((double) bestJob.getEstimation()) / jobPhases.getEstimation() >= blockedCoeff) {
+                            logger.info("[Healing] Killing replica: " + bestJob.getJob().getId() + " because " + jobPhases.getJob().getId() + "is better");
+                            logger.info("[Healing] Status : " + bestJob.getLastStatusCode() + " vs " + jobPhases.getLastStatusCode());
+                            logger.info("[Healing] Estimations : " + bestJob.getEstimation() + " vs " + jobPhases.getEstimation());
                             killReplica(bestJob.getJob());
                         }
                         bestJob = jobPhases;
 
                     } else if (((double) jobPhases.getEstimation()) / bestJob.getEstimation() >= blockedCoeff) {
+                        logger.info("[Healing] Killing replica: " + job.getId() + " because " + bestJob.getJob().getId() + "is better");
+                        logger.info("[Healing] Estimations : " + jobPhases.getEstimation() + " vs " + bestJob.getEstimation());
                         killReplica(job);
                     }
                 }
@@ -118,16 +129,71 @@ public class CommandState {
                         / (setupMedian + inputMedian + executionMedian + outputMedian) >= blockedCoeff) {
 
                     Job job = bestJob.getJob();
-                    logger.info("[Healing] Replicating: " + job.getId());
+                    logger.info("[Healing] Replicating: " + job.getId() + " (jobEstimation: " + bestJob.getEstimation() + " ) ");
                     job.setStatus(GaswStatus.REPLICATE);
                     jobDAO.update(job);
                 }
             }
-        } catch (DAOException ex) {
-            // do nothing
-        } catch (GaswException ex) {
-            // do nothing
+        } catch (DAOException | GaswException ex) {
+            logger.error("[Healing] Error looking for jobs to replicate: ", ex);
         }
+    }
+
+    private void logTimesIfNecessary(
+            long setupMedian, long inputMedian,
+            long executionMedian, long outputMedian) {
+
+        if (lastLoggedTimes == null) {
+            printAndUpdateStats(
+                    setupMedian, inputMedian, executionMedian, outputMedian);
+        } else {
+            boolean needToLog = false;
+            int percentage =
+                    HealingConfiguration.getInstance().getStatsChangePercentage();
+            if (isChangeGreaterThanPercentage(
+                    lastLoggedTimes.get("setup"), setupMedian, percentage)) {
+                needToLog = true;
+            } else if (isChangeGreaterThanPercentage(
+                    lastLoggedTimes.get("input"), inputMedian, percentage)) {
+                needToLog = true;
+            } else if (isChangeGreaterThanPercentage(
+                    lastLoggedTimes.get("execution"), executionMedian, percentage)) {
+                needToLog = true;
+            } else if (isChangeGreaterThanPercentage(
+                    lastLoggedTimes.get("output"), outputMedian, percentage)) {
+                needToLog = true;
+            }
+
+            if (needToLog) {
+                printAndUpdateStats(
+                        setupMedian, inputMedian, executionMedian, outputMedian);
+            }
+        }
+    }
+
+    private boolean isChangeGreaterThanPercentage(
+            long v1, long v2, int percentage) {
+
+        double ratio = 1 -
+                percentage / 100.;
+        double max = Math.max(v1, v2);
+        double min = Math.min(v1, v2);
+        return (min/max < ratio);
+    }
+
+    private void printAndUpdateStats(
+            long setupMedian, long inputMedian,
+            long executionMedian, long outputMedian) {
+
+        lastLoggedTimes.put("setup", setupMedian);
+        lastLoggedTimes.put("input", inputMedian);
+        lastLoggedTimes.put("execution", executionMedian);
+        lastLoggedTimes.put("output", outputMedian);
+
+        logger.info("[Healing] [Logging stats] setupMedian: " + setupMedian +
+                " ; inputMedian: " + inputMedian +
+                " ; executionMedian: " + executionMedian +
+                " ; outputMedian: " + outputMedian);
     }
 
     private class ReplicationMonitor extends Thread {
@@ -141,9 +207,7 @@ public class CommandState {
                         replicateJobs();
                     }
                     sleep(HealingConfiguration.getInstance().getSleepTime());
-
-                } catch (GaswException ex) {
-                    logger.error(ex);
+                    
                 } catch (InterruptedException ex) {
                     logger.error(ex);
                 }

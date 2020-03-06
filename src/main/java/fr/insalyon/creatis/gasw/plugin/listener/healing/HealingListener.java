@@ -163,7 +163,7 @@ public class HealingListener implements ListenerPlugin {
                 default:
             }
         } catch (DAOException ex) {
-            // do nothing
+            logger.error("[Healing] Error updating minor status", ex);
         }
     }
 
