@@ -143,7 +143,7 @@ public class CommandState {
             long setupMedian, long inputMedian,
             long executionMedian, long outputMedian) {
 
-        if (lastLoggedTimes == null) {
+        if (lastLoggedTimes.isEmpty()) {
             printAndUpdateStats(
                     setupMedian, inputMedian, executionMedian, outputMedian);
         } else {
