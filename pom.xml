@@ -23,6 +23,10 @@
                     <archive>
                         <manifest>
                             <mainClass>fr.insalyon.creatis.gasw.Gasw</mainClass>
+                            <!-- 2 next lines necessary to include the maven version
+                             into the MANIFEST file of the jar with dependencies-->
+                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                            <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
                         </manifest>
                     </archive>
                     <descriptorRefs>
@@ -38,6 +42,20 @@
                         </goals>
                     </execution>
                 </executions>
+            </plugin>
+            <!-- config necessary to include the maven version
+             into the MANIFEST file of the default jar-->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                            <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
+                        </manifest>
+                    </archive>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
