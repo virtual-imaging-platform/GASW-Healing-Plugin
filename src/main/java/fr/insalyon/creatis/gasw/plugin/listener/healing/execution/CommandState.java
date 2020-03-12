@@ -82,57 +82,81 @@ public class CommandState {
             long executionMedian = getMedianValue(executionTimes);
             long outputMedian = getMedianValue(outputTimes);
             logTimesIfNecessary(setupMedian, inputMedian, executionMedian, outputMedian);
-            
-            double blockedCoeff = HealingConfiguration.getInstance().getBlockedCoefficient();
 
             JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
 
             for (Job runningJob : jobDAO.getRunningByCommand(command)) {
 
                 boolean unstartedReplica = false;
-                JobPhases bestJob = null;
+
+                // for each running job, fetch all the active replicates of the same invocation
 
                 List<Job> jobs = jobDAO.getActiveJobsByInvocationID(runningJob.getInvocationID());
 
                 for (Job job : jobs) {
-                    if (job.getStatus() != GaswStatus.RUNNING
-                            && job.getStatus() != GaswStatus.KILL
-                            && job.getStatus() != GaswStatus.RESCHEDULE) {
+                    if (job.getStatus() != GaswStatus.RUNNING) {
                         unstartedReplica = true;
                         break;
                     }
-                    JobPhases jobPhases = new JobPhases(job, setupMedian,
-                            inputMedian, executionMedian, outputMedian);
+                }
 
-                    if (bestJob == null) {
-                        bestJob = jobPhases;
+                // if any active job of this invocation is not running,
+                // do nothing and wait for the replicate to start, be replicated,
+                // ot be killed
 
-                    } else if (jobPhases.getEstimation() < bestJob.getEstimation()) {
+                if (! unstartedReplica) {
+                    // else do the healing on those jobs
+                    doHealing(jobs, setupMedian, inputMedian, executionMedian, outputMedian);
+                }
 
-                        if (jobPhases.getLastStatusCode() > bestJob.getLastStatusCode()
-                                && ((double) bestJob.getEstimation()) / jobPhases.getEstimation() >= blockedCoeff) {
-                            logger.info("[Healing] Killing replica: " + bestJob.getJob().getId() + " because " + jobPhases.getJob().getId() + " is better");
-                            logger.info("[Healing] Status : " + bestJob.getLastStatusCode() + " vs " + jobPhases.getLastStatusCode());
-                            logger.info("[Healing] Estimations : " + bestJob.getEstimation() + " vs " + jobPhases.getEstimation());
-                            killReplica(bestJob.getJob());
-                        }
-                        bestJob = jobPhases;
 
-                    } else if (((double) jobPhases.getEstimation()) / bestJob.getEstimation() >= blockedCoeff) {
-                        logger.info("[Healing] Killing replica: " + job.getId() + " because " + bestJob.getJob().getId() + " is better");
-                        logger.info("[Healing] Estimations : " + jobPhases.getEstimation() + " vs " + bestJob.getEstimation());
-                        killReplica(job);
+            }
+        } catch (DAOException ex) {
+            logger.error("[Healing] Error looking for jobs to replicate: ", ex);
+        }
+    }
+
+    private void doHealing(List<Job> jobs,
+                           long setupMedian, long inputMedian,
+                           long executionMedian, long outputMedian) {
+        try {
+            double blockedCoeff = HealingConfiguration.getInstance().getBlockedCoefficient();
+            JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
+
+            JobPhases bestJob = null;
+
+            for (Job job : jobs) {
+                JobPhases jobPhases = new JobPhases(job, setupMedian,
+                        inputMedian, executionMedian, outputMedian);
+
+                if (bestJob == null) {
+                    bestJob = jobPhases;
+
+                } else if (jobPhases.getEstimation() < bestJob.getEstimation()) {
+
+                    if (jobPhases.getLastStatusCode() > bestJob.getLastStatusCode()
+                            && ((double) bestJob.getEstimation()) / jobPhases.getEstimation() >= blockedCoeff) {
+                        logger.info("[Healing] Killing replica: " + bestJob.getJob().getId() + " because " + jobPhases.getJob().getId() + " is better");
+                        logger.info("[Healing] Status : " + bestJob.getLastStatusCode() + " vs " + jobPhases.getLastStatusCode());
+                        logger.info("[Healing] Estimations : " + bestJob.getEstimation() + " vs " + jobPhases.getEstimation());
+                        killReplica(bestJob.getJob());
                     }
-                }
-                if (!unstartedReplica && jobs.size() < HealingConfiguration.getInstance().getMaxReplicas()
-                        && bestJob != null && ((double) bestJob.getEstimation())
-                        / (setupMedian + inputMedian + executionMedian + outputMedian) >= blockedCoeff) {
+                    bestJob = jobPhases;
 
-                    Job job = bestJob.getJob();
-                    logger.info("[Healing] Replicating: " + job.getId() + " (jobEstimation: " + bestJob.getEstimation() + " ) ");
-                    job.setStatus(GaswStatus.REPLICATE);
-                    jobDAO.update(job);
+                } else if (((double) jobPhases.getEstimation()) / bestJob.getEstimation() >= blockedCoeff) {
+                    logger.info("[Healing] Killing replica: " + job.getId() + " because " + bestJob.getJob().getId() + " is better");
+                    logger.info("[Healing] Estimations : " + jobPhases.getEstimation() + " vs " + bestJob.getEstimation());
+                    killReplica(job);
                 }
+            }
+            if (jobs.size() < HealingConfiguration.getInstance().getMaxReplicas()
+                    && bestJob != null && ((double) bestJob.getEstimation())
+                    / (setupMedian + inputMedian + executionMedian + outputMedian) >= blockedCoeff) {
+
+                Job job = bestJob.getJob();
+                logger.info("[Healing] Replicating: " + job.getId() + " (jobEstimation: " + bestJob.getEstimation() + " ) ");
+                job.setStatus(GaswStatus.REPLICATE);
+                jobDAO.update(job);
             }
         } catch (DAOException | GaswException ex) {
             logger.error("[Healing] Error looking for jobs to replicate: ", ex);
