@@ -111,7 +111,7 @@ public class CommandState {
 
                         if (jobPhases.getLastStatusCode() > bestJob.getLastStatusCode()
                                 && ((double) bestJob.getEstimation()) / jobPhases.getEstimation() >= blockedCoeff) {
-                            logger.info("[Healing] Killing replica: " + bestJob.getJob().getId() + " because " + jobPhases.getJob().getId() + "is better");
+                            logger.info("[Healing] Killing replica: " + bestJob.getJob().getId() + " because " + jobPhases.getJob().getId() + " is better");
                             logger.info("[Healing] Status : " + bestJob.getLastStatusCode() + " vs " + jobPhases.getLastStatusCode());
                             logger.info("[Healing] Estimations : " + bestJob.getEstimation() + " vs " + jobPhases.getEstimation());
                             killReplica(bestJob.getJob());
@@ -119,7 +119,7 @@ public class CommandState {
                         bestJob = jobPhases;
 
                     } else if (((double) jobPhases.getEstimation()) / bestJob.getEstimation() >= blockedCoeff) {
-                        logger.info("[Healing] Killing replica: " + job.getId() + " because " + bestJob.getJob().getId() + "is better");
+                        logger.info("[Healing] Killing replica: " + job.getId() + " because " + bestJob.getJob().getId() + " is better");
                         logger.info("[Healing] Estimations : " + jobPhases.getEstimation() + " vs " + bestJob.getEstimation());
                         killReplica(job);
                     }
