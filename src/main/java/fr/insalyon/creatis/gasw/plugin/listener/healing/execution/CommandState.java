@@ -94,7 +94,8 @@ public class CommandState {
                 List<Job> jobs = jobDAO.getActiveJobsByInvocationID(runningJob.getInvocationID());
 
                 for (Job job : jobs) {
-                    if (job.getStatus() != GaswStatus.RUNNING) {
+                    if (job.getStatus() != GaswStatus.RUNNING
+                        || job.isReplicating()) {
                         unstartedReplica = true;
                         break;
                     }
