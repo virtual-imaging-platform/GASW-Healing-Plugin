@@ -32,12 +32,10 @@
  */
 package fr.insalyon.creatis.gasw.plugin.listener.healing.execution;
 
-import fr.insalyon.creatis.gasw.GaswException;
-import fr.insalyon.creatis.gasw.bean.Job;
-import fr.insalyon.creatis.gasw.dao.DAOException;
-import fr.insalyon.creatis.gasw.dao.DAOFactory;
-import fr.insalyon.creatis.gasw.dao.JobDAO;
-import fr.insalyon.creatis.gasw.execution.GaswStatus;
+import fr.insalyon.creatis.gasw.*;
+import fr.insalyon.creatis.gasw.bean.*;
+import fr.insalyon.creatis.gasw.dao.*;
+import fr.insalyon.creatis.gasw.execution.*;
 import fr.insalyon.creatis.gasw.plugin.listener.healing.HealingConfiguration;
 
 import java.util.*;
@@ -84,30 +82,17 @@ public class CommandState {
             logTimesIfNecessary(setupMedian, inputMedian, executionMedian, outputMedian);
 
             JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
-
             for (Job runningJob : jobDAO.getRunningByCommand(command)) {
 
-                boolean unstartedReplica = false;
+                List<Job> activeJobs = jobDAO.getActiveJobsByInvocationID(runningJob.getInvocationID());
+                List<Job> failedJobs = jobDAO.getFailedJobsByInvocationID(runningJob.getInvocationID());
 
-                // for each running job, fetch all the active replicates of the same invocation
+                // Only heal if all the active jobs are RUNNING and if
+                // none is an temporary state
 
-                List<Job> jobs = jobDAO.getActiveJobsByInvocationID(runningJob.getInvocationID());
-
-                for (Job job : jobs) {
-                    if (job.getStatus() != GaswStatus.RUNNING
-                        || job.isReplicating()) {
-                        unstartedReplica = true;
-                        break;
-                    }
-                }
-
-                // if any active job of this invocation is not running,
-                // do nothing and wait for the replicate to start, be replicated,
-                // ot be killed
-
-                if (! unstartedReplica) {
-                    // else do the healing on those jobs
-                    doHealing(jobs, setupMedian, inputMedian, executionMedian, outputMedian);
+                if (canDoHealingForJobs(activeJobs, failedJobs)) {
+                    // if OK, do the healing on the running jobs
+                    doHealing(activeJobs, failedJobs, setupMedian, inputMedian, executionMedian, outputMedian);
                 }
 
 
@@ -117,7 +102,49 @@ public class CommandState {
         }
     }
 
-    private void doHealing(List<Job> jobs,
+    private List<Job> filterRunningJobs(List<Job> allInvocationJobs) {
+        List<Job> runningJobs = new ArrayList<> (allInvocationJobs);
+        runningJobs.removeIf(job -> job.getStatus() != GaswStatus.RUNNING);
+        return runningJobs;
+    }
+
+    private boolean canDoHealingForJobs(
+            List<Job> activeJobs, List<Job> failedJobs) throws DAOException {
+
+        // do NOT do healing when
+        // - a job is in a temporary state
+        //      (replicating, restarting, finishing, being killed)
+        // - a job is active but not running (submitted, queued)
+
+        // first check on the jobs internal information to avoid database access
+        for (Job job : activeJobs) {
+            if (job.isReplicating() || job.getStatus() != GaswStatus.RUNNING) {
+                return false;
+            }
+        }
+        for (Job job : failedJobs) {
+            if (job.isReplicating()) {
+                return false;
+            }
+        }
+        // to do database access only when necessary, check for minor statuses
+        // only after checking all jobs internal information
+        for (Job job : activeJobs) {
+            if (hasFinished(job)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private boolean hasFinished(Job job) throws DAOException {
+        JobMinorStatusDAO minorStatusDAO = DAOFactory.getDAOFactory().getJobMinorStatusDAO();
+        List<JobMinorStatus> minorStatuses = minorStatusDAO.getExecutionMinorStatus(job.getId());
+        return minorStatuses.stream().anyMatch(ms -> ms.getStatus() == GaswMinorStatus.Finished);
+    }
+
+    private void doHealing(List<Job> jobs, List<Job> failedJobs,
                            long setupMedian, long inputMedian,
                            long executionMedian, long outputMedian) {
         try {
@@ -132,25 +159,16 @@ public class CommandState {
 
                 if (bestJob == null) {
                     bestJob = jobPhases;
-
                 } else if (jobPhases.getEstimation() < bestJob.getEstimation()) {
-
-                    if (jobPhases.getLastStatusCode() > bestJob.getLastStatusCode()
-                            && ((double) bestJob.getEstimation()) / jobPhases.getEstimation() >= blockedCoeff) {
-                        logger.info("[Healing] Killing replica: " + bestJob.getJob().getId() + " because " + jobPhases.getJob().getId() + " is better");
-                        logger.info("[Healing] Status : " + bestJob.getLastStatusCode() + " vs " + jobPhases.getLastStatusCode());
-                        logger.info("[Healing] Estimations : " + bestJob.getEstimation() + " vs " + jobPhases.getEstimation());
-                        killReplica(bestJob.getJob());
-                    }
+                    JobPhases formerBestJob = bestJob;
                     bestJob = jobPhases;
-
-                } else if (((double) jobPhases.getEstimation()) / bestJob.getEstimation() >= blockedCoeff) {
-                    logger.info("[Healing] Killing replica: " + job.getId() + " because " + bestJob.getJob().getId() + " is better");
-                    logger.info("[Healing] Estimations : " + jobPhases.getEstimation() + " vs " + bestJob.getEstimation());
-                    killReplica(job);
+                    killReplicaIfNecessary(formerBestJob, bestJob);
+                } else {
+                    killReplicaIfNecessary(jobPhases, bestJob);
                 }
             }
             if (jobs.size() < HealingConfiguration.getInstance().getMaxReplicas()
+                    && failedJobs.size() < GaswConfiguration.getInstance().getDefaultRetryCount()
                     && bestJob != null && ((double) bestJob.getEstimation())
                     / (setupMedian + inputMedian + executionMedian + outputMedian) >= blockedCoeff) {
 
@@ -161,6 +179,28 @@ public class CommandState {
             }
         } catch (DAOException | GaswException ex) {
             logger.error("[Healing] Error looking for jobs to replicate: ", ex);
+        }
+    }
+
+    private void killReplicaIfNecessary(
+            JobPhases jobToEvaluatePhase,
+            JobPhases bestJobPhase) throws DAOException {
+        if (jobToEvaluatePhase.getLastStatusCode() >= bestJobPhase.getLastStatusCode()) {
+            // do nothing if the job is not in an equal or more advanced state
+            return;
+        }
+        double blockedCoeff = HealingConfiguration.getInstance().getBlockedCoefficient();
+        if (((double) jobToEvaluatePhase.getEstimation()) / bestJobPhase.getEstimation() >= blockedCoeff) {
+            Job jobToEvaluate = jobToEvaluatePhase.getJob();
+            Job bestJob = bestJobPhase.getJob();
+            logger.info("[Healing] Killing replica: " + jobToEvaluate.getId() +
+                    " because " + bestJob.getId() + " is better");
+            logger.info("[Healing] Status : " + jobToEvaluatePhase.getLastStatusCode() +
+                    " vs " + bestJobPhase.getLastStatusCode());
+            logger.info("[Healing] Estimations : " + jobToEvaluatePhase.getEstimation() +
+                    " vs " + bestJobPhase.getEstimation());
+            jobToEvaluate.setStatus(GaswStatus.KILL_REPLICA);
+            DAOFactory.getDAOFactory().getJobDAO().update(jobToEvaluate);
         }
     }
 
@@ -250,13 +290,6 @@ public class CommandState {
             int index = list.size() / 2;
             return (list.get(index - 1) + list.get(index)) / 2;
         }
-    }
-
-    private void killReplica(Job job) throws DAOException {
-
-        logger.info("[Healing] Killing replica: " + job.getId());
-        job.setStatus(GaswStatus.KILL_REPLICA);
-        DAOFactory.getDAOFactory().getJobDAO().update(job);
     }
 
     public void addSetupTime(long time) {

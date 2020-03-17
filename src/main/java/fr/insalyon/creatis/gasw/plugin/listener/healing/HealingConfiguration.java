@@ -64,9 +64,9 @@ public class HealingConfiguration {
         try {
             PropertiesConfiguration config = GaswConfiguration.getInstance().getPropertiesConfiguration();
 
-            sleepTime = config.getInt(HealingConstants.LAB_SLEEP_TIME, 5) * 1000;
+            sleepTime = config.getInt(HealingConstants.LAB_SLEEP_TIME, 15) * 1000;
             blockedCoefficient = config.getDouble(HealingConstants.LAB_BLOCKED_COEFFICIENT, 2);
-            maxReplicas = config.getInt(HealingConstants.LAB_MAX_REPLICAS, 3);
+            maxReplicas = config.getInt(HealingConstants.LAB_MAX_REPLICAS, 2);
             statsChangePercentage = config.getInt(HealingConstants.LAB_STATS_CHANGE_PERCENTAGE, 10);
 
             config.setProperty(HealingConstants.LAB_SLEEP_TIME, sleepTime / 1000);
