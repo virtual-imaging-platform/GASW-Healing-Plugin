@@ -43,4 +43,7 @@ public class HealingConstants {
     public final static String LAB_SLEEP_TIME = "plugin.healing.sleeptime";
     public final static String LAB_BLOCKED_COEFFICIENT = "plugin.healing.blocked.coefficient";
     public final static String LAB_MAX_REPLICAS = "plugin.healing.max.replicas";
+
+    // percentage of change, 10 meaning change bigger than 10%
+    public final static String LAB_STATS_CHANGE_PERCENTAGE = "plugin.healing.stats.changePercentage";
 }

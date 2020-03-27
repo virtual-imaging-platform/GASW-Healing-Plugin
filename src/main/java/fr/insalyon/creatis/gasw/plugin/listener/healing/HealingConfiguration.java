@@ -49,8 +49,9 @@ public class HealingConfiguration {
     private int sleepTime;
     private double blockedCoefficient;
     private int maxReplicas;
+    private int statsChangePercentage;
 
-    public static HealingConfiguration getInstance() throws GaswException {
+    public static HealingConfiguration getInstance() {
 
         if (instance == null) {
             instance = new HealingConfiguration();
@@ -58,23 +59,25 @@ public class HealingConfiguration {
         return instance;
     }
 
-    private HealingConfiguration() throws GaswException {
+    private HealingConfiguration() {
 
         try {
             PropertiesConfiguration config = GaswConfiguration.getInstance().getPropertiesConfiguration();
 
-            sleepTime = config.getInt(HealingConstants.LAB_SLEEP_TIME, 5) * 1000;
+            sleepTime = config.getInt(HealingConstants.LAB_SLEEP_TIME, 15) * 1000;
             blockedCoefficient = config.getDouble(HealingConstants.LAB_BLOCKED_COEFFICIENT, 2);
-            maxReplicas = config.getInt(HealingConstants.LAB_MAX_REPLICAS, 3);
+            maxReplicas = config.getInt(HealingConstants.LAB_MAX_REPLICAS, 2);
+            statsChangePercentage = config.getInt(HealingConstants.LAB_STATS_CHANGE_PERCENTAGE, 10);
 
             config.setProperty(HealingConstants.LAB_SLEEP_TIME, sleepTime / 1000);
             config.setProperty(HealingConstants.LAB_BLOCKED_COEFFICIENT, blockedCoefficient);
             config.setProperty(HealingConstants.LAB_MAX_REPLICAS, maxReplicas);
+            config.setProperty(HealingConstants.LAB_STATS_CHANGE_PERCENTAGE, statsChangePercentage);
 
             config.save();
 
-        } catch (ConfigurationException ex) {
-            logger.error(ex);
+        } catch (ConfigurationException | GaswException ex) {
+            logger.error("[Healing] error initializing HealingConfiguration : " + ex);
         }
     }
 
@@ -88,5 +91,9 @@ public class HealingConfiguration {
 
     public int getMaxReplicas() {
         return maxReplicas;
+    }
+
+    public int getStatsChangePercentage() {
+        return statsChangePercentage;
     }
 }

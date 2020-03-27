@@ -78,7 +78,10 @@ public class HealingListener implements ListenerPlugin {
     @Override
     public void load() throws GaswException {
 
-        logger.info("Loading Self-Healing GASW Plugin");
+        // fetch version from maven generated file
+        logger.info("Loading Self-Healing GASW Plugin version "
+                + getClass().getPackage().getImplementationVersion());
+        
         HealingConfiguration.getInstance();
         commandsMap = new HashMap<String, CommandState>();
     }
@@ -96,7 +99,6 @@ public class HealingListener implements ListenerPlugin {
 
     /**
      *
-     * @param gaswInput
      * @throws GaswException
      */
     @Override
@@ -163,7 +165,7 @@ public class HealingListener implements ListenerPlugin {
                 default:
             }
         } catch (DAOException ex) {
-            // do nothing
+            logger.error("[Healing] Error updating minor status", ex);
         }
     }
 
