@@ -168,7 +168,7 @@ public class CommandState {
                 }
             }
             if (jobs.size() < HealingConfiguration.getInstance().getMaxReplicas()
-                    && failedJobs.size() < GaswConfiguration.getInstance().getDefaultRetryCount()
+                    && (failedJobs.size() - 1) < GaswConfiguration.getInstance().getDefaultRetryCount()
                     && bestJob != null && ((double) bestJob.getEstimation())
                     / (setupMedian + inputMedian + executionMedian + outputMedian) >= blockedCoeff) {
 
