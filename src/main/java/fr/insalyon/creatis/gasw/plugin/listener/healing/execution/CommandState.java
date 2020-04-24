@@ -55,6 +55,8 @@ public class CommandState {
     private volatile List<Long> inputTimes;
     private volatile List<Long> executionTimes;
     private volatile List<Long> outputTimes;
+    private volatile double jobErrorRate;
+    private volatile double invocationPartialErrorRate;
 
     private Map<String,Long> lastLoggedTimes;
 
@@ -66,6 +68,8 @@ public class CommandState {
         this.inputTimes = new ArrayList<Long>();
         this.executionTimes = new ArrayList<Long>();
         this.outputTimes = new ArrayList<Long>();
+        this.jobErrorRate = 0.0 ;
+        this.invocationPartialErrorRate = 0.0 ;
 
         this.lastLoggedTimes = new HashMap<>();
 
@@ -306,6 +310,30 @@ public class CommandState {
 
     public void addUploadTime(long time) {
         this.outputTimes.add(time);
+    }
+
+    public void computeJobErrorRate() throws DAOException {
+
+        this.jobErrorRate = DAOFactory.getDAOFactory().getJobDAO().getFailedByCommand(this.command).size()
+                / DAOFactory.getDAOFactory().getJobDAO().getJobsByCommand(this.command).size();
+
+    }
+
+    public void computeInvocationPartialErrorRate() throws DAOException {
+        // TODO : after further analysis, also consider jobs running for more than MAX hours when computing invocationPartialErrorRate
+        int failures = 0;
+        List<Integer> invocationIDs = DAOFactory.getDAOFactory().getJobDAO().getInvocationsByCommand(this.command);
+        for (int invocation : invocationIDs) {
+            if (DAOFactory.getDAOFactory().getJobDAO().getFailedJobsByInvocationID(invocation).size() >= 1) {
+                failures++;
+            }
+        }
+        this.invocationPartialErrorRate = failures / DAOFactory.getDAOFactory().getJobDAO().getInvocationsByCommand(this.command).size();
+    }
+
+
+    public void killAllJobs(){
+
     }
 
     /**

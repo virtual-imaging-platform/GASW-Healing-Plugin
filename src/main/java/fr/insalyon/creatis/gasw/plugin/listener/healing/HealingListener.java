@@ -35,6 +35,7 @@
 package fr.insalyon.creatis.gasw.plugin.listener.healing;
 
 import fr.insalyon.creatis.gasw.GaswException;
+import fr.insalyon.creatis.gasw.GaswExitCode;
 import fr.insalyon.creatis.gasw.GaswOutput;
 import fr.insalyon.creatis.gasw.bean.Job;
 import fr.insalyon.creatis.gasw.bean.JobMinorStatus;
@@ -42,6 +43,7 @@ import fr.insalyon.creatis.gasw.dao.DAOException;
 import fr.insalyon.creatis.gasw.dao.DAOFactory;
 import fr.insalyon.creatis.gasw.dao.JobMinorStatusDAO;
 import fr.insalyon.creatis.gasw.execution.GaswMinorStatus;
+import fr.insalyon.creatis.gasw.execution.GaswStatus;
 import fr.insalyon.creatis.gasw.plugin.ListenerPlugin;
 import fr.insalyon.creatis.gasw.plugin.listener.healing.execution.CommandState;
 import java.util.ArrayList;
@@ -117,6 +119,30 @@ public class HealingListener implements ListenerPlugin {
      */
     @Override
     public void jobFinished(GaswOutput gaswOutput) throws GaswException {
+        Job job = null;
+        try {
+            logger.info("[Healing] : job " + gaswOutput.getJobID() + " finished with exit code " + gaswOutput.getExitCode());
+            job = DAOFactory.getDAOFactory().getJobDAO().getJobByID(gaswOutput.getJobID());
+            CommandState cs;
+            if (commandsMap.containsKey(job.getCommand())) {
+                cs = commandsMap.get(job.getCommand());
+            } else {
+                cs = new CommandState(job.getCommand());
+                commandsMap.put(job.getCommand(), cs);
+            }
+            if (gaswOutput.getExitCode() != GaswExitCode.SUCCESS && gaswOutput.getExitCode() != GaswExitCode.EXECUTION_CANCELED) {
+                cs.computeJobErrorRate();
+                cs.computeInvocationPartialErrorRate();
+                if (HealingConfiguration.getInstance().getMinInvocations() >= DAOFactory.getDAOFactory().getJobDAO().getInvocationsByCommand(job.getCommand()).size()
+                       //TODO add conditions on error rates
+                        ){
+                    cs.killAllJobs();
+                }
+
+            }
+        } catch (DAOException ex) {
+            logger.error("[Healing] Error computing error rates", ex);
+        }
     }
 
     /**
