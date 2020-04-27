@@ -131,14 +131,7 @@ public class HealingListener implements ListenerPlugin {
                 commandsMap.put(job.getCommand(), cs);
             }
             if (gaswOutput.getExitCode() != GaswExitCode.SUCCESS && gaswOutput.getExitCode() != GaswExitCode.EXECUTION_CANCELED) {
-                cs.computeJobErrorRate();
-                cs.computeInvocationPartialErrorRate();
-                if (HealingConfiguration.getInstance().getMinInvocations() >= DAOFactory.getDAOFactory().getJobDAO().getInvocationsByCommand(job.getCommand()).size()
-                       //TODO add conditions on error rates
-                        ){
-                    cs.killAllJobs();
-                }
-
+                cs.updateErrorRatesAndKillDecision();
             }
         } catch (DAOException ex) {
             logger.error("[Healing] Error computing error rates", ex);

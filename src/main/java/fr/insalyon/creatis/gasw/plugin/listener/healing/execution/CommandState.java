@@ -51,6 +51,7 @@ public class CommandState {
     private static final Logger logger = Logger.getLogger("fr.insalyon.creatis.gasw");
     private String command;
     private volatile boolean stop;
+    private volatile boolean killAllJobs;
     private volatile List<Long> setupTimes;
     private volatile List<Long> inputTimes;
     private volatile List<Long> executionTimes;
@@ -70,6 +71,7 @@ public class CommandState {
         this.outputTimes = new ArrayList<Long>();
         this.jobErrorRate = 0.0 ;
         this.invocationPartialErrorRate = 0.0 ;
+        this.killAllJobs = false;
 
         this.lastLoggedTimes = new HashMap<>();
 
@@ -272,6 +274,11 @@ public class CommandState {
 
             while (!stop) {
                 try {
+                    if(killAllJobs){
+                        killAllJobs();
+                        //break so that we do not replicate jobs that are being killed
+                        break;
+                    }
                     if (outputTimes.size() > 1) {
                         replicateJobs();
                     }
@@ -313,30 +320,66 @@ public class CommandState {
     }
 
     public void computeJobErrorRate() throws DAOException {
-
-        this.jobErrorRate = DAOFactory.getDAOFactory().getJobDAO().getFailedByCommand(this.command).size()
-                / DAOFactory.getDAOFactory().getJobDAO().getJobsByCommand(this.command).size();
+        JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
+        this.jobErrorRate = jobDAO.getFailedByCommand(this.command).size() / jobDAO.getJobsByCommand(this.command).size() * 100;
+        logger.info("[Healing] Updated the jobErrorRate to " + this.jobErrorRate);
 
     }
 
     public void computeInvocationPartialErrorRate() throws DAOException {
         // TODO : after further analysis, also consider jobs running for more than MAX hours when computing invocationPartialErrorRate
         int failures = 0;
-        List<Integer> invocationIDs = DAOFactory.getDAOFactory().getJobDAO().getInvocationsByCommand(this.command);
+        JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
+        List<Integer> invocationIDs = jobDAO.getInvocationsByCommand(this.command);
         for (int invocation : invocationIDs) {
-            if (DAOFactory.getDAOFactory().getJobDAO().getFailedJobsByInvocationID(invocation).size() >= 1) {
+            if (jobDAO.getFailedJobsByInvocationID(invocation).size() >= 1) {
                 failures++;
             }
         }
-        this.invocationPartialErrorRate = failures / DAOFactory.getDAOFactory().getJobDAO().getInvocationsByCommand(this.command).size();
-    }
-
-
-    public void killAllJobs(){
+        this.invocationPartialErrorRate = failures / jobDAO.getInvocationsByCommand(this.command).size() * 100;
+        logger.info("[Healing] Updated the invocationPartialErrorRate to " + this.invocationPartialErrorRate);
 
     }
 
-    /**
+    public void updateErrorRatesAndKillDecision() throws DAOException {
+        logger.info("[Healing] Updating error rates and killing decision");
+        computeJobErrorRate();
+        computeInvocationPartialErrorRate();
+        if (DAOFactory.getDAOFactory().getJobDAO().getInvocationsByCommand(this.command).size() >= HealingConfiguration.getInstance().getMinInvocations() ) {
+            if ( this.jobErrorRate >= HealingConfiguration.getInstance().getMaxErrorJobPercentage() &&
+                    this.invocationPartialErrorRate >= HealingConfiguration.getInstance().getMaxErrorInvocationPercentage()) {
+                this.killAllJobs = true;
+                logger.info("[Healing] Attention, updating killing decision to true. Job error rate is "+
+                        this.jobErrorRate + " and invocation error rate is "+ this.invocationPartialErrorRate);
+            }
+        }
+
+    }
+
+
+    public void killAllJobs() {
+        logger.info("[Healing] Killing all jobs of type " + this.command);
+        try {
+            JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
+            List<Integer> invocationIDs = jobDAO.getInvocationsByCommand(this.command);
+            GaswStatus status;
+            for (int invocation : invocationIDs) {
+                List<Job> activeJobs = jobDAO.getActiveJobsByInvocationID(invocation);
+                status = GaswStatus.KILL;
+                for (Job job : activeJobs) {
+                    job.setStatus(status);
+                    jobDAO.update(job);
+                    //all subsequent jobs are replica, so kill them as such
+                    status = GaswStatus.KILL_REPLICA;
+                }
+            }
+        } catch (DAOException ex) {
+            logger.error("[Healing] Error killing jobs: ", ex);
+        }
+
+    }
+
+        /**
      * Terminates the monitor.
      */
     public void terminate() {

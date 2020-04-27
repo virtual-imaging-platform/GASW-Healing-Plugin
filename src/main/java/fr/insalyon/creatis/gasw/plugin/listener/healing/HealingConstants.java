@@ -47,8 +47,10 @@ public class HealingConstants {
     // percentage of change, 10 meaning change bigger than 10%
     public final static String LAB_STATS_CHANGE_PERCENTAGE = "plugin.healing.stats.changePercentage";
 
-    // percentage of job errors above which all jobs get killed (stop condition)
+    // percentage of job error that triggers the killing of all jobs (stop condition)
     public final static String LAB_MAX_ERROR_JOB_PERCENTAGE = "plugin.healing.max.errorJobPercentage";
+    // percentage of invocations partial error that triggers the killing of all jobs (stop condition)
+    public final static String LAB_MAX_ERROR_INVOCATION_PERCENTAGE = "plugin.healing.max.errorInvocationPercentage";
     // minimum number of invocations per workflow in STOP condition
     public final static String LAB_MIN_INVOCATIONS = "plugin.healing.min.invocations";
 }
