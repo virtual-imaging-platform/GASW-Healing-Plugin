@@ -321,7 +321,7 @@ public class CommandState {
 
     public void computeJobErrorRate() throws DAOException {
         JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
-        this.jobErrorRate = jobDAO.getFailedByCommand(this.command).size() / jobDAO.getJobsByCommand(this.command).size() * 100;
+        this.jobErrorRate = 100.0 * jobDAO.getFailedByCommand(this.command).size() / jobDAO.getJobsByCommand(this.command).size();
         logger.info("[Healing] Updated the jobErrorRate to " + this.jobErrorRate);
 
     }
@@ -336,7 +336,7 @@ public class CommandState {
                 failures++;
             }
         }
-        this.invocationPartialErrorRate = failures / jobDAO.getInvocationsByCommand(this.command).size() * 100;
+        this.invocationPartialErrorRate = 100.0 * failures / jobDAO.getInvocationsByCommand(this.command).size();
         logger.info("[Healing] Updated the invocationPartialErrorRate to " + this.invocationPartialErrorRate);
 
     }
@@ -349,7 +349,8 @@ public class CommandState {
             if ( this.jobErrorRate >= HealingConfiguration.getInstance().getMaxErrorJobPercentage() &&
                     this.invocationPartialErrorRate >= HealingConfiguration.getInstance().getMaxErrorInvocationPercentage()) {
                 this.killAllJobs = true;
-                logger.info("[Healing] Attention, updating killing decision to true. Job error rate is "+
+                logger.info("[Healing] Attention, updating killing decision to true. Nm min invocations are "+
+                        HealingConfiguration.getInstance().getMinInvocations()+" , job error rate is "+
                         this.jobErrorRate + " and invocation error rate is "+ this.invocationPartialErrorRate);
             }
         }

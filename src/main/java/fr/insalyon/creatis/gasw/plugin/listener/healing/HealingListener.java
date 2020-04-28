@@ -122,13 +122,15 @@ public class HealingListener implements ListenerPlugin {
         Job job = null;
         try {
             logger.info("[Healing] : job " + gaswOutput.getJobID() + " finished with exit code " + gaswOutput.getExitCode());
-            job = DAOFactory.getDAOFactory().getJobDAO().getJobByID(gaswOutput.getJobID());
+            //Attention, gaswOutput.getJobID() returns the Moteur job ID in the format command-4072786226984043.jdl
+            String jobID = gaswOutput.getJobID();
+            String command = jobID.replaceAll("(-[0-9]+.jdl)$", "");
             CommandState cs;
-            if (commandsMap.containsKey(job.getCommand())) {
-                cs = commandsMap.get(job.getCommand());
+            if (commandsMap.containsKey(command)) {
+                cs = commandsMap.get(command);
             } else {
-                cs = new CommandState(job.getCommand());
-                commandsMap.put(job.getCommand(), cs);
+                cs = new CommandState(command);
+                commandsMap.put(command, cs);
             }
             if (gaswOutput.getExitCode() != GaswExitCode.SUCCESS && gaswOutput.getExitCode() != GaswExitCode.EXECUTION_CANCELED) {
                 cs.updateErrorRatesAndKillDecision();
