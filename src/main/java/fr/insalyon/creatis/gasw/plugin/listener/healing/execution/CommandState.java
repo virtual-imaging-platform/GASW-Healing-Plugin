@@ -42,6 +42,8 @@ import java.util.*;
 
 import org.apache.log4j.Logger;
 
+import static java.lang.Thread.sleep;
+
 /**
  *
  * @author Rafael Ferreira da Silva
@@ -357,29 +359,52 @@ public class CommandState {
 
     }
 
-
     public void killAllJobs() {
         logger.info("[Healing] Killing all jobs of type " + this.command);
         try {
             JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
             List<Integer> invocationIDs = jobDAO.getInvocationsByCommand(this.command);
-            GaswStatus status;
-            for (int invocation : invocationIDs) {
-                List<Job> activeJobs = jobDAO.getActiveJobsByInvocationID(invocation);
-                status = GaswStatus.KILL;
+            while(!invocationIDs.isEmpty()) {
+                ListIterator<Integer> listIterator = invocationIDs.listIterator();
+                while (listIterator.hasNext()) {
+                    int invocation = listIterator.next();
+                    if (invocationJobsKilled(invocation)) {
+                        listIterator.remove();
+                    }
+                }
+            }
+
+        } catch (DAOException ex) {
+            logger.error("[Healing] Error killing jobs: ", ex);
+        }
+    }
+
+    public boolean invocationJobsKilled (int invocation) {
+        logger.info("[Healing] Killing jobs of invocation " + invocation);
+        try {
+            JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
+            GaswStatus status = GaswStatus.KILL;
+            List<Job> activeJobs = jobDAO.getActiveJobsByInvocationID(invocation);
+            if(!activeJobs.isEmpty()) {
                 for (Job job : activeJobs) {
                     job.setStatus(status);
                     jobDAO.update(job);
                     //all subsequent jobs are replica, so kill them as such
                     status = GaswStatus.KILL_REPLICA;
                 }
+            }else {
+                //we can have a job that has just failed and will be resubmitted
+                if(jobDAO.getNumberOfCompletedJobsByInvocationID(invocation) == 0) {
+                    logger.info("Invocation " + invocation + " has no active and no completed job, a failed job is probably being resubmitted");
+                    return false;
+                }
             }
         } catch (DAOException ex) {
-            logger.error("[Healing] Error killing jobs: ", ex);
+            logger.error("[Healing] Error killing jobs for invocation : " +invocation, ex);
+            return false;
         }
-
+        return true;
     }
-
         /**
      * Terminates the monitor.
      */
