@@ -385,7 +385,7 @@ public class CommandState {
             JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
             GaswStatus status = GaswStatus.KILL;
             List<Job> activeJobs = jobDAO.getActiveJobsByInvocationID(invocation);
-            if(!activeJobs.isEmpty()) {
+            if( (activeJobs!=null) && (!activeJobs.isEmpty()) ) {
                 for (Job job : activeJobs) {
                     job.setStatus(status);
                     jobDAO.update(job);
@@ -395,8 +395,10 @@ public class CommandState {
             }else {
                 //we can have a job that has just failed and will be resubmitted
                 if(jobDAO.getNumberOfCompletedJobsByInvocationID(invocation) == 0) {
-                    logger.info("Invocation " + invocation + " has no active and no completed job, a failed job is probably being resubmitted");
-                    return false;
+                    if (!heldJobsHandled(invocation)) {
+                        logger.info("Invocation " + invocation + " has no active, no completed and no held job, a failed job is probably being resubmitted");
+                        return false;
+                    }
                 }
             }
         } catch (DAOException ex) {
@@ -405,6 +407,30 @@ public class CommandState {
         }
         return true;
     }
+
+    public boolean heldJobsHandled (int invocationID){
+        logger.info("[Healing] Handle Held job for invocation " + invocationID);
+        try {
+            JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
+            List<Job> failedJobs = jobDAO.getFailedJobsByInvocationID(invocationID);
+            if( (failedJobs!=null) && (!failedJobs.isEmpty())) {
+                for (Job job : failedJobs) {
+                    if ((job.getStatus() == GaswStatus.ERROR_HELD) || (job.getStatus() == GaswStatus.STALLED_HELD)) {
+                        GaswOutput gaswOutput = new GaswOutput(job.getId(), GaswExitCode.UNDEFINED, job.getExitMessage(),
+                                null, null, null, null, null);
+                        GaswNotification.getInstance().addFinishedJob(gaswOutput);
+                        return true;
+                    }
+                }
+            }
+        } catch (DAOException ex) {
+            logger.error("[Healing] Error handling held job: ", ex);
+        }
+        finally {
+            return false;
+        }
+    }
+
         /**
      * Terminates the monitor.
      */
