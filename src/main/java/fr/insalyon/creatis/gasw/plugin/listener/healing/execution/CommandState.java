@@ -278,11 +278,10 @@ public class CommandState {
                 try {
                     if(killAllJobs){
                         killAllJobs();
-                        //break so that we do not replicate jobs that are being killed
-                        break;
-                    }
-                    if (outputTimes.size() > 1) {
-                        replicateJobs();
+                    } else {
+                        if (outputTimes.size() > 1) {
+                            replicateJobs();
+                        }
                     }
                     sleep(HealingConfiguration.getInstance().getSleepTime());
                     
@@ -321,14 +320,14 @@ public class CommandState {
         this.outputTimes.add(time);
     }
 
-    public void computeJobErrorRate() throws DAOException {
+    private void computeJobErrorRate() throws DAOException {
         JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
         this.jobErrorRate = 100.0 * jobDAO.getFailedByCommand(this.command).size() / jobDAO.getJobsByCommand(this.command).size();
         logger.info("[Healing] Updated the jobErrorRate to " + this.jobErrorRate);
 
     }
 
-    public void computeInvocationPartialErrorRate() throws DAOException {
+    private void computeInvocationPartialErrorRate() throws DAOException {
         // TODO : after further analysis, also consider jobs running for more than MAX hours when computing invocationPartialErrorRate
         int failures = 0;
         JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
@@ -344,7 +343,6 @@ public class CommandState {
     }
 
     public void updateErrorRatesAndKillDecision() throws DAOException {
-        logger.info("[Healing] Updating error rates and killing decision");
         computeJobErrorRate();
         computeInvocationPartialErrorRate();
         if (DAOFactory.getDAOFactory().getJobDAO().getInvocationsByCommand(this.command).size() >= HealingConfiguration.getInstance().getMinInvocations() ) {
@@ -359,19 +357,13 @@ public class CommandState {
 
     }
 
-    public void killAllJobs() {
+    private void killAllJobs() {
         logger.info("[Healing] Killing all jobs of type " + this.command);
         try {
             JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
             List<Integer> invocationIDs = jobDAO.getInvocationsByCommand(this.command);
-            while(!invocationIDs.isEmpty()) {
-                ListIterator<Integer> listIterator = invocationIDs.listIterator();
-                while (listIterator.hasNext()) {
-                    int invocation = listIterator.next();
-                    if (invocationJobsKilled(invocation)) {
-                        listIterator.remove();
-                    }
-                }
+            for (int invocation : invocationIDs) {
+                killInvocationJobs(invocation);
             }
 
         } catch (DAOException ex) {
@@ -379,55 +371,48 @@ public class CommandState {
         }
     }
 
-    public boolean invocationJobsKilled (int invocation) {
+    private void killInvocationJobs (int invocation) {
         logger.info("[Healing] Killing jobs of invocation " + invocation);
         try {
             JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
             GaswStatus status = GaswStatus.KILL;
             List<Job> activeJobs = jobDAO.getActiveJobsByInvocationID(invocation);
-            if( (activeJobs!=null) && (!activeJobs.isEmpty()) ) {
+            if ((activeJobs != null) && (!activeJobs.isEmpty())) {
                 for (Job job : activeJobs) {
                     job.setStatus(status);
                     jobDAO.update(job);
+                    logger.info("[Healing] Setting status of job " + job.getId() + " to " + status);
                     //all subsequent jobs are replica, so kill them as such
                     status = GaswStatus.KILL_REPLICA;
                 }
-            }else {
-                //we can have a job that has just failed and will be resubmitted
-                if(jobDAO.getNumberOfCompletedJobsByInvocationID(invocation) == 0) {
-                    if (!heldJobsHandled(invocation)) {
-                        logger.info("Invocation " + invocation + " has no active, no completed and no held job, a failed job is probably being resubmitted");
-                        return false;
-                    }
+            } else {
+                if (jobDAO.getNumberOfCompletedJobsByInvocationID(invocation) == 0) {
+                    handleHeldJobs(invocation);
                 }
             }
+
         } catch (DAOException ex) {
-            logger.error("[Healing] Error killing jobs for invocation : " +invocation, ex);
-            return false;
+            logger.error("[Healing] Error killing jobs for invocation : " + invocation, ex);
         }
-        return true;
     }
 
-    public boolean heldJobsHandled (int invocationID){
-        logger.info("[Healing] Handle Held job for invocation " + invocationID);
+    private void handleHeldJobs (int invocationID){
+        logger.info("[Healing] Handle Held jobs for invocation " + invocationID);
         try {
             JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
             List<Job> failedJobs = jobDAO.getFailedJobsByInvocationID(invocationID);
             if( (failedJobs!=null) && (!failedJobs.isEmpty())) {
                 for (Job job : failedJobs) {
                     if ((job.getStatus() == GaswStatus.ERROR_HELD) || (job.getStatus() == GaswStatus.STALLED_HELD)) {
-                        GaswOutput gaswOutput = new GaswOutput(job.getId(), GaswExitCode.UNDEFINED, job.getExitMessage(),
+                        GaswOutput gaswOutput = new GaswOutput(job.getFileName() + ".jdl", GaswExitCode.EXECUTION_CANCELED, job.getExitMessage(),
                                 null, null, null, null, null);
                         GaswNotification.getInstance().addFinishedJob(gaswOutput);
-                        return true;
+                        logger.info("[Healing] Handled Held job " + job.getId());
                     }
                 }
             }
         } catch (DAOException ex) {
             logger.error("[Healing] Error handling held job: ", ex);
-        }
-        finally {
-            return false;
         }
     }
 
