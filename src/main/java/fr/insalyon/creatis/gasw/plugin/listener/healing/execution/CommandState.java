@@ -276,7 +276,7 @@ public class CommandState {
 
             while (!stop) {
                 try {
-                    if(killAllJobs){
+                    if (killAllJobs) {
                         killAllJobs();
                     } else {
                         if (outputTimes.size() > 1) {
@@ -346,7 +346,7 @@ public class CommandState {
         computeJobErrorRate();
         computeInvocationPartialErrorRate();
         if (DAOFactory.getDAOFactory().getJobDAO().getInvocationsByCommand(this.command).size() >= HealingConfiguration.getInstance().getMinInvocations() ) {
-            if ( this.jobErrorRate >= HealingConfiguration.getInstance().getMaxErrorJobPercentage() &&
+            if (this.jobErrorRate >= HealingConfiguration.getInstance().getMaxErrorJobPercentage() &&
                     this.invocationPartialErrorRate >= HealingConfiguration.getInstance().getMaxErrorInvocationPercentage()) {
                 this.killAllJobs = true;
                 logger.info("[Healing] Attention, updating killing decision to true. Nm min invocations are "+
@@ -401,7 +401,7 @@ public class CommandState {
         try {
             JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
             List<Job> failedJobs = jobDAO.getFailedJobsByInvocationID(invocationID);
-            if( (failedJobs!=null) && (!failedJobs.isEmpty())) {
+            if ((failedJobs!=null) && (!failedJobs.isEmpty())) {
                 for (Job job : failedJobs) {
                     if ((job.getStatus() == GaswStatus.ERROR_HELD) || (job.getStatus() == GaswStatus.STALLED_HELD)) {
                         GaswOutput gaswOutput = new GaswOutput(job.getFileName() + ".jdl", GaswExitCode.EXECUTION_CANCELED, job.getExitMessage(),
