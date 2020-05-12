@@ -346,7 +346,7 @@ public class CommandState {
         computeJobErrorRate();
         computeInvocationPartialErrorRate();
         if (DAOFactory.getDAOFactory().getJobDAO().getInvocationsByCommand(this.command).size() >= HealingConfiguration.getInstance().getMinInvocations() ) {
-            if (this.jobErrorRate >= HealingConfiguration.getInstance().getMaxErrorJobPercentage() &&
+            if (this.jobErrorRate >= HealingConfiguration.getInstance().getMaxErrorJobPercentage() ||
                     this.invocationPartialErrorRate >= HealingConfiguration.getInstance().getMaxErrorInvocationPercentage()) {
                 this.killAllJobs = true;
                 logger.info("[Healing] Attention, updating killing decision to true. Nm min invocations are "+
