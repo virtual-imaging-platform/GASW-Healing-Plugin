@@ -337,7 +337,7 @@ public class CommandState {
                 failures++;
             }
         }
-        this.invocationPartialErrorRate = 100.0 * failures / jobDAO.getInvocationsByCommand(this.command).size();
+        this.invocationPartialErrorRate = 100.0 * failures / invocationIDs.size();
         logger.info("[Healing] Updated the invocationPartialErrorRate to " + this.invocationPartialErrorRate);
 
     }
@@ -403,10 +403,19 @@ public class CommandState {
             List<Job> failedJobs = jobDAO.getFailedJobsByInvocationID(invocationID);
             if ((failedJobs!=null) && (!failedJobs.isEmpty())) {
                 for (Job job : failedJobs) {
-                    if ((job.getStatus() == GaswStatus.ERROR_HELD) || (job.getStatus() == GaswStatus.STALLED_HELD)) {
-                        GaswOutput gaswOutput = new GaswOutput(job.getFileName() + ".jdl", GaswExitCode.EXECUTION_CANCELED, job.getExitMessage(),
+                    GaswStatus jobStatus = job.getStatus();
+                    if ((jobStatus == GaswStatus.ERROR_HELD) || (jobStatus == GaswStatus.STALLED_HELD)) {
+                        GaswStatus newStatus = GaswStatus.ERROR;
+                        GaswExitCode exitCode = GaswExitCode.EXECUTION_FAILED;
+                        if (jobStatus == GaswStatus.STALLED_HELD) {
+                            newStatus = GaswStatus.STALLED;
+                            exitCode = GaswExitCode.EXECUTION_STALLED;
+                        }
+                        GaswOutput gaswOutput = new GaswOutput(job.getFileName() + ".jdl", exitCode, job.getExitMessage(),
                                 null, null, null, null, null);
                         GaswNotification.getInstance().addFinishedJob(gaswOutput);
+                        job.setStatus(newStatus);
+                        jobDAO.update(job);
                         logger.info("[Healing] Handled Held job " + job.getId());
                     }
                 }
