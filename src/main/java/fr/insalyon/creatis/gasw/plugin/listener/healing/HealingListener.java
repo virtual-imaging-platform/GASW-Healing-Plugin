@@ -35,6 +35,7 @@
 package fr.insalyon.creatis.gasw.plugin.listener.healing;
 
 import fr.insalyon.creatis.gasw.GaswException;
+import fr.insalyon.creatis.gasw.GaswExitCode;
 import fr.insalyon.creatis.gasw.GaswOutput;
 import fr.insalyon.creatis.gasw.bean.Job;
 import fr.insalyon.creatis.gasw.bean.JobMinorStatus;
@@ -42,6 +43,7 @@ import fr.insalyon.creatis.gasw.dao.DAOException;
 import fr.insalyon.creatis.gasw.dao.DAOFactory;
 import fr.insalyon.creatis.gasw.dao.JobMinorStatusDAO;
 import fr.insalyon.creatis.gasw.execution.GaswMinorStatus;
+import fr.insalyon.creatis.gasw.execution.GaswStatus;
 import fr.insalyon.creatis.gasw.plugin.ListenerPlugin;
 import fr.insalyon.creatis.gasw.plugin.listener.healing.execution.CommandState;
 import java.util.ArrayList;
@@ -117,6 +119,25 @@ public class HealingListener implements ListenerPlugin {
      */
     @Override
     public void jobFinished(GaswOutput gaswOutput) throws GaswException {
+        Job job = null;
+        try {
+            logger.info("[Healing] : job " + gaswOutput.getJobID() + " finished with exit code " + gaswOutput.getExitCode());
+            //Attention, gaswOutput.getJobID() returns the Moteur job ID in the format command-4072786226984043.jdl
+            String jobID = gaswOutput.getJobID();
+            String command = jobID.replaceAll("(-[0-9]+.jdl)$", "");
+            CommandState cs;
+            if (commandsMap.containsKey(command)) {
+                cs = commandsMap.get(command);
+            } else {
+                cs = new CommandState(command);
+                commandsMap.put(command, cs);
+            }
+            if (gaswOutput.getExitCode() != GaswExitCode.SUCCESS && gaswOutput.getExitCode() != GaswExitCode.EXECUTION_CANCELED) {
+                cs.updateErrorRatesAndKillDecision();
+            }
+        } catch (DAOException ex) {
+            logger.error("[Healing] Error computing error rates", ex);
+        }
     }
 
     /**

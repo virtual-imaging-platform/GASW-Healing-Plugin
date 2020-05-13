@@ -50,6 +50,9 @@ public class HealingConfiguration {
     private double blockedCoefficient;
     private int maxReplicas;
     private int statsChangePercentage;
+    private double maxErrorJobPercentage;
+    private double maxErrorInvocationPercentage;
+    private int minInvocations;
 
     public static HealingConfiguration getInstance() {
 
@@ -68,11 +71,17 @@ public class HealingConfiguration {
             blockedCoefficient = config.getDouble(HealingConstants.LAB_BLOCKED_COEFFICIENT, 2);
             maxReplicas = config.getInt(HealingConstants.LAB_MAX_REPLICAS, 2);
             statsChangePercentage = config.getInt(HealingConstants.LAB_STATS_CHANGE_PERCENTAGE, 10);
+            maxErrorJobPercentage = config.getDouble(HealingConstants.LAB_MAX_ERROR_JOB_PERCENTAGE, 60);
+            maxErrorInvocationPercentage = config.getDouble(HealingConstants.LAB_MAX_ERROR_INVOCATION_PERCENTAGE, 99.9);
+            minInvocations = config.getInt(HealingConstants.LAB_MIN_INVOCATIONS, 100);
 
             config.setProperty(HealingConstants.LAB_SLEEP_TIME, sleepTime / 1000);
             config.setProperty(HealingConstants.LAB_BLOCKED_COEFFICIENT, blockedCoefficient);
             config.setProperty(HealingConstants.LAB_MAX_REPLICAS, maxReplicas);
             config.setProperty(HealingConstants.LAB_STATS_CHANGE_PERCENTAGE, statsChangePercentage);
+            config.setProperty(HealingConstants.LAB_MAX_ERROR_JOB_PERCENTAGE, maxErrorJobPercentage);
+            config.setProperty(HealingConstants.LAB_MAX_ERROR_INVOCATION_PERCENTAGE, maxErrorInvocationPercentage);
+            config.setProperty(HealingConstants.LAB_MIN_INVOCATIONS, minInvocations);
 
             config.save();
 
@@ -95,5 +104,17 @@ public class HealingConfiguration {
 
     public int getStatsChangePercentage() {
         return statsChangePercentage;
+    }
+
+    public double getMaxErrorJobPercentage() {
+        return maxErrorJobPercentage;
+    }
+
+    public double getMaxErrorInvocationPercentage() {
+        return maxErrorInvocationPercentage;
+    }
+
+    public int getMinInvocations() {
+        return minInvocations;
     }
 }
