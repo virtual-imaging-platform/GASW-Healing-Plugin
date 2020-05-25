@@ -43,4 +43,14 @@ public class HealingConstants {
     public final static String LAB_SLEEP_TIME = "plugin.healing.sleeptime";
     public final static String LAB_BLOCKED_COEFFICIENT = "plugin.healing.blocked.coefficient";
     public final static String LAB_MAX_REPLICAS = "plugin.healing.max.replicas";
+
+    // percentage of change, 10 meaning change bigger than 10%
+    public final static String LAB_STATS_CHANGE_PERCENTAGE = "plugin.healing.stats.changePercentage";
+
+    // percentage of job error that triggers the killing of all jobs (stop condition)
+    public final static String LAB_MAX_ERROR_JOB_PERCENTAGE = "plugin.healing.max.errorJobPercentage";
+    // percentage of invocations partial error that triggers the killing of all jobs (stop condition)
+    public final static String LAB_MAX_ERROR_INVOCATION_PERCENTAGE = "plugin.healing.max.errorInvocationPercentage";
+    // minimum number of invocations per workflow in STOP condition
+    public final static String LAB_MIN_INVOCATIONS = "plugin.healing.min.invocations";
 }
