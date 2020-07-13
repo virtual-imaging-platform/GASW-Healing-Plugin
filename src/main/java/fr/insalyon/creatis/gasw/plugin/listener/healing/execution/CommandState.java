@@ -365,7 +365,12 @@ public class CommandState {
             for (int invocation : invocationIDs) {
                 killInvocationJobs(invocation);
             }
-
+            if(jobDAO.getActiveJobs().isEmpty()){
+                //This is only needed because of the Moteur bug preventing the workflow from finishing when there are no jobs left
+                //TODO: remove this when the Moteur bug is fixed
+                logger.info("[Healing] Attention, no active jobs left, stopping the healing now.");
+                terminate();
+            }
         } catch (DAOException ex) {
             logger.error("[Healing] Error killing jobs: ", ex);
         }
