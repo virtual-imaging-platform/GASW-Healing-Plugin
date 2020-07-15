@@ -385,6 +385,7 @@ public class CommandState {
             if ((activeJobs != null) && (!activeJobs.isEmpty())) {
                 for (Job job : activeJobs) {
                     job.setStatus(status);
+                    job.setBeingKilled(true);
                     jobDAO.update(job);
                     logger.info("[Healing] Setting status of job " + job.getId() + " to " + status);
                     //all subsequent jobs are replica, so kill them as such
@@ -416,11 +417,12 @@ public class CommandState {
                             newStatus = GaswStatus.STALLED;
                             exitCode = GaswExitCode.EXECUTION_STALLED;
                         }
+                        job.setBeingKilled(true);
+                        job.setStatus(newStatus);
+                        jobDAO.update(job);
                         GaswOutput gaswOutput = new GaswOutput(job.getFileName() + ".jdl", exitCode, job.getExitMessage(),
                                 null, null, null, null, null);
                         GaswNotification.getInstance().addFinishedJob(gaswOutput);
-                        job.setStatus(newStatus);
-                        jobDAO.update(job);
                         logger.info("[Healing] Handled Held job " + job.getId());
                     }
                 }
