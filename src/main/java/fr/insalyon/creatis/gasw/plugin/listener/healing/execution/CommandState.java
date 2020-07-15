@@ -366,8 +366,8 @@ public class CommandState {
                 killInvocationJobs(invocation);
             }
             if(jobDAO.getActiveJobs().isEmpty()){
-                //This is only needed because of the Moteur bug preventing the workflow from finishing when there are no jobs left
-                //TODO: remove this when the Moteur bug is fixed
+                //This is needed for certain Moteur workflows (e.g., GATE) for which the workflow is not completed when there are no jobs left
+                //TODO: remove this when the completion issue is fixed on the workflow side
                 logger.info("[Healing] Attention, no active jobs left, stopping the healing now.");
                 terminate();
             }
