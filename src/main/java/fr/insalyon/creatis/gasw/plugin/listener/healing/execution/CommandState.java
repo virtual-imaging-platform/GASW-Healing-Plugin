@@ -365,7 +365,12 @@ public class CommandState {
             for (int invocation : invocationIDs) {
                 killInvocationJobs(invocation);
             }
-
+            if(jobDAO.getActiveJobs().isEmpty()){
+                //This is needed for certain Moteur workflows (e.g., GATE) for which the workflow is not completed when there are no jobs left
+                //TODO: remove this when the completion issue is fixed on the workflow side
+                logger.info("[Healing] Attention, no active jobs left, stopping the healing now.");
+                terminate();
+            }
         } catch (DAOException ex) {
             logger.error("[Healing] Error killing jobs: ", ex);
         }
@@ -380,6 +385,7 @@ public class CommandState {
             if ((activeJobs != null) && (!activeJobs.isEmpty())) {
                 for (Job job : activeJobs) {
                     job.setStatus(status);
+                    job.setBeingKilled(true);
                     jobDAO.update(job);
                     logger.info("[Healing] Setting status of job " + job.getId() + " to " + status);
                     //all subsequent jobs are replica, so kill them as such
@@ -411,11 +417,12 @@ public class CommandState {
                             newStatus = GaswStatus.STALLED;
                             exitCode = GaswExitCode.EXECUTION_STALLED;
                         }
+                        job.setBeingKilled(true);
+                        job.setStatus(newStatus);
+                        jobDAO.update(job);
                         GaswOutput gaswOutput = new GaswOutput(job.getFileName() + ".jdl", exitCode, job.getExitMessage(),
                                 null, null, null, null, null);
                         GaswNotification.getInstance().addFinishedJob(gaswOutput);
-                        job.setStatus(newStatus);
-                        jobDAO.update(job);
                         logger.info("[Healing] Handled Held job " + job.getId());
                     }
                 }
