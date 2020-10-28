@@ -420,8 +420,17 @@ public class CommandState {
                         job.setBeingKilled(true);
                         job.setStatus(newStatus);
                         jobDAO.update(job);
-                        GaswOutput gaswOutput = new GaswOutput(job.getFileName() + ".jdl", exitCode, job.getExitMessage(),
-                                null, null, null, null, null);
+                        GaswOutput gaswOutput;
+                        GaswOutput previousGaswOutput = GaswNotification.getInstance().getGaswOutputFromLastFailedJob(job.getFileName() + ".jdl");
+                        if (previousGaswOutput !=  null) {
+                            logger.info("[Healing] Getting previous StdOutErr files for held job instance : " +job.getFileName());
+                            gaswOutput = new GaswOutput(job.getFileName() + ".jdl", exitCode, job.getExitMessage(),
+                                    null, previousGaswOutput.getAppStdOut(), previousGaswOutput.getAppStdErr(), previousGaswOutput.getStdOut(), previousGaswOutput.getStdErr());
+                        } else {
+                            logger.info("[Healing] No previous StdOutErr files for held job instance : " +job.getFileName() +". Setting it to null.");
+                            gaswOutput = new GaswOutput(job.getFileName() + ".jdl", exitCode, job.getExitMessage(),
+                                    null, null, null, null, null);
+                        }
                         GaswNotification.getInstance().addFinishedJob(gaswOutput);
                         logger.info("[Healing] Handled Held job " + job.getId());
                     }
