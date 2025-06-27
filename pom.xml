@@ -3,7 +3,7 @@
 
     <groupId>fr.insalyon.creatis</groupId>
     <artifactId>gasw-healing-plugin</artifactId>
-    <version>3.5.0-SNAPSHOT</version>
+    <version>4.0</version>
     <packaging>jar</packaging>
 
     <name>GASW-Healing-Plugin</name>
@@ -12,7 +12,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
-        <gasw-version>3.12.0-SNAPSHOT</gasw-version>
+        <gasw-version>4.0</gasw-version>
     </properties>
 
     <build>
