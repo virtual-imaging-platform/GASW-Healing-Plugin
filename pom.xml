@@ -10,8 +10,9 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>11</maven.compiler.source>
-        <maven.compiler.target>11</maven.compiler.target>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <gasw-version>3.12.0-SNAPSHOT</gasw-version>
     </properties>
 
     <build>
@@ -70,7 +71,7 @@
         <dependency>
             <groupId>fr.insalyon.creatis</groupId>
             <artifactId>gasw</artifactId>
-            <version>3.7.0</version>
+            <version>${gasw-version}</version>
             <scope>provided</scope>
         </dependency>
 
