@@ -32,10 +32,6 @@
  */
 package fr.insalyon.creatis.gasw.plugin.listener.healing;
 
-/**
- *
- * @author Rafael Ferreira da Silva
- */
 public class HealingConstants {
 
     public final static String NAME = "Self-Healing";

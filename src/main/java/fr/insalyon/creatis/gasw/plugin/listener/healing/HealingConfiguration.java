@@ -36,15 +36,12 @@ import fr.insalyon.creatis.gasw.GaswConfiguration;
 import fr.insalyon.creatis.gasw.GaswException;
 import org.apache.commons.configuration.ConfigurationException;
 import org.apache.commons.configuration.PropertiesConfiguration;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-/**
- *
- * @author Rafael Ferreira da Silva
- */
 public class HealingConfiguration {
 
-    private static final Logger logger = Logger.getLogger("fr.insalyon.creatis.gasw");
+    private static final Logger logger = LoggerFactory.getLogger(HealingConfiguration.class);
     private static HealingConfiguration instance;
     private int sleepTime;
     private double blockedCoefficient;
@@ -86,7 +83,7 @@ public class HealingConfiguration {
             config.save();
 
         } catch (ConfigurationException | GaswException ex) {
-            logger.error("[Healing] error initializing HealingConfiguration : " + ex);
+            logger.error("Error initializing HealingConfiguration: ", ex);
         }
     }
 
