@@ -43,86 +43,59 @@ import fr.insalyon.creatis.gasw.dao.DAOException;
 import fr.insalyon.creatis.gasw.dao.DAOFactory;
 import fr.insalyon.creatis.gasw.dao.JobMinorStatusDAO;
 import fr.insalyon.creatis.gasw.execution.GaswMinorStatus;
-import fr.insalyon.creatis.gasw.execution.GaswStatus;
 import fr.insalyon.creatis.gasw.plugin.ListenerPlugin;
 import fr.insalyon.creatis.gasw.plugin.listener.healing.execution.CommandState;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import net.xeoh.plugins.base.annotations.PluginImplementation;
-import org.apache.log4j.Logger;
 
-/**
- *
- * @author Rafael Ferreira da Silva
- */
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import net.xeoh.plugins.base.annotations.PluginImplementation;
+
 @PluginImplementation
 public class HealingListener implements ListenerPlugin {
 
-    private static final Logger logger = Logger.getLogger("fr.insalyon.creatis.gasw");
+    private static final Logger logger = LoggerFactory.getLogger(HealingListener.class);
     private volatile Map<String, CommandState> commandsMap;
 
-    /**
-     *
-     * @return
-     */
     @Override
     public String getPluginName() {
-
         return HealingConstants.NAME;
     }
 
-    /**
-     *
-     * @throws GaswException
-     */
     @Override
     public void load() throws GaswException {
-
         // fetch version from maven generated file
-        logger.info("Loading Self-Healing GASW Plugin version "
-                + getClass().getPackage().getImplementationVersion());
+        logger.info("Loading Self-Healing GASW Plugin version {}",
+                getClass().getPackage().getImplementationVersion());
         
         HealingConfiguration.getInstance();
         commandsMap = new HashMap<String, CommandState>();
     }
 
-    /**
-     *
-     * @return @throws GaswException
-     */
     @Override
     public List<Class> getPersistentClasses() throws GaswException {
-
         List<Class> list = new ArrayList<Class>();
         return list;
     }
 
-    /**
-     *
-     * @throws GaswException
-     */
     @Override
     public void jobSubmitted(Job job) throws GaswException {
-
         String command = job.getCommand();
-        if (!commandsMap.containsKey(command)) {
+
+        if ( ! commandsMap.containsKey(command)) {
             commandsMap.put(command, new CommandState(command));
         }
     }
 
-    /**
-     *
-     * @param gaswOutput
-     * @throws GaswException
-     */
     @Override
     public void jobFinished(GaswOutput gaswOutput) throws GaswException {
-        Job job = null;
         try {
-            logger.info("[Healing] : job " + gaswOutput.getJobID() + " finished with exit code " + gaswOutput.getExitCode());
-            //Attention, gaswOutput.getJobID() returns the Moteur job ID in the format command-4072786226984043.jdl
+            logger.info("Job {} finished with exit code {}", gaswOutput.getJobID(), gaswOutput.getExitCode());
+            // Attention, gaswOutput.getJobID() returns the Moteur job ID in the format command-4072786226984043.jdl
             String jobID = gaswOutput.getJobID();
             String command = jobID.replaceAll("(-[0-9]+.jdl)$", "");
             CommandState cs;
@@ -136,29 +109,19 @@ public class HealingListener implements ListenerPlugin {
                 cs.updateErrorRatesAndKillDecision();
             }
         } catch (DAOException ex) {
-            logger.error("[Healing] Error computing error rates", ex);
+            logger.error("Error computing error rates", ex);
         }
     }
 
-    /**
-     *
-     * @param job
-     * @throws GaswException
-     */
     @Override
     public void jobStatusChanged(Job job) throws GaswException {
     }
 
-    /**
-     *
-     * @param jobMinorStatus
-     * @throws GaswException
-     */
     @Override
     public void jobMinorStatusReported(JobMinorStatus jobMinorStatus) throws GaswException {
 
         try {
-            logger.info("[Healing] Minor Status Reported: " + jobMinorStatus.getJob().getId() + " - " + jobMinorStatus.getStatus().name());
+            logger.info("Minor Status Reported: {} - {}", jobMinorStatus.getJob().getId(), jobMinorStatus.getStatus().name());
             Job job = jobMinorStatus.getJob();
             CommandState cs;
             if (commandsMap.containsKey(job.getCommand())) {
@@ -186,14 +149,10 @@ public class HealingListener implements ListenerPlugin {
                 default:
             }
         } catch (DAOException ex) {
-            logger.error("[Healing] Error updating minor status", ex);
+            logger.error("Error updating minor status", ex);
         }
     }
 
-    /**
-     *
-     * @throws GaswException
-     */
     @Override
     public void terminate() throws GaswException {
 

@@ -42,10 +42,6 @@ import fr.insalyon.creatis.gasw.dao.DAOFactory;
 import fr.insalyon.creatis.gasw.execution.GaswMinorStatus;
 import java.util.Date;
 
-/**
- *
- * @author Rafael Ferreira da Silva
- */
 public class JobPhases {
 
     private Job job;
