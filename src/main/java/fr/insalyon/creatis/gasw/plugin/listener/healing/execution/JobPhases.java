@@ -34,103 +34,15 @@
  */
 package fr.insalyon.creatis.gasw.plugin.listener.healing.execution;
 
-import fr.insalyon.creatis.gasw.GaswException;
 import fr.insalyon.creatis.gasw.bean.Job;
-import fr.insalyon.creatis.gasw.bean.JobMinorStatus;
-import fr.insalyon.creatis.gasw.dao.DAOException;
-import fr.insalyon.creatis.gasw.dao.DAOFactory;
 import fr.insalyon.creatis.gasw.execution.GaswMinorStatus;
-import java.util.Date;
 
-public class JobPhases {
-
-    private Job job;
-    private long startTime = 0;
-    private long setupTime = 0;
-    private long inputTime = 0;
-    private long executionTime = 0;
-    private long uploadTime = 0;
-    private long estimation = 0;
-    private GaswMinorStatus lastStatus = null;
-
-    /**
-     *
-     * @param job
-     * @param setupMedian
-     * @param inputMedian
-     * @param executionMedian
-     * @param outputMedian
-     */
-    public JobPhases(Job job, long setupMedian, long inputMedian,
-            long executionMedian, long outputMedian) throws GaswException {
-
-        this.job = job;
-
-        try {
-            for (JobMinorStatus status : DAOFactory.getDAOFactory().getJobMinorStatusDAO().getExecutionMinorStatus(job.getId())) {
-
-                switch (status.getStatus()) {
-                    case Started:
-                        startTime = status.getDate().getTime();
-                        lastStatus = GaswMinorStatus.Started;
-                        break;
-                    case Inputs:
-                        setupTime = status.getDate().getTime() - startTime;
-                        lastStatus = GaswMinorStatus.Inputs;
-                        estimation += setupTime;
-                        break;
-                    case Application:
-                        inputTime = status.getDate().getTime() - setupTime - startTime;
-                        lastStatus = GaswMinorStatus.Application;
-                        estimation += inputTime;
-                        break;
-                    case Outputs:
-                        executionTime = status.getDate().getTime() - inputTime - setupTime - startTime;
-                        lastStatus = GaswMinorStatus.Outputs;
-                        estimation += executionTime;
-                        break;
-                    case Finished:
-                        uploadTime = status.getDate().getTime() - executionTime - inputTime - setupTime - startTime;
-                        lastStatus = GaswMinorStatus.Finished;
-                        estimation += uploadTime;
-                }
-            }
-            long currentTime = new Date().getTime();
-            if (lastStatus != null) {
-                switch (lastStatus) {
-                    case Started:
-                        setupTime = currentTime - startTime;
-                        estimation = Math.max(setupTime, setupMedian) + inputMedian + executionMedian + outputMedian;
-                        break;
-                    case Inputs:
-                        inputTime = currentTime - setupTime - startTime;
-                        estimation += Math.max(inputTime, inputMedian) + executionMedian + outputMedian;
-                        break;
-                    case Application:
-                        executionTime = currentTime - startTime - setupTime - inputTime;
-                        estimation += Math.max(executionTime, executionMedian) + outputMedian;
-                        break;
-                    case Outputs:
-                        uploadTime = currentTime - startTime - setupTime - inputTime - executionTime;
-                        estimation += Math.max(uploadTime, outputMedian);
-                }
-            } else {
-                estimation = setupMedian + inputMedian + executionMedian + outputMedian;
-            }
-        } catch (DAOException ex) {
-            throw new GaswException(ex);
-        }
-    }
-
-    public long getEstimation() {
-        return estimation;
-    }
-
+public record JobPhases(
+        Job job,
+        long estimation,
+        GaswMinorStatus lastStatus
+) {
     public int getLastStatusCode() {
         return lastStatus == null ? -1 : lastStatus.getStatusCode();
-    }
-
-    public Job getJob() {
-        return job;
     }
 }

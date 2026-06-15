@@ -30,407 +30,127 @@
  * The fact that you are presently reading this means that you have had
  * knowledge of the CeCILL license and that you accept its terms.
  */
+
 package fr.insalyon.creatis.gasw.plugin.listener.healing.execution;
 
-import fr.insalyon.creatis.gasw.*;
-import fr.insalyon.creatis.gasw.bean.*;
-import fr.insalyon.creatis.gasw.dao.*;
-import fr.insalyon.creatis.gasw.execution.*;
-import fr.insalyon.creatis.gasw.plugin.listener.healing.HealingConfiguration;
-
 import java.util.*;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class CommandState {
 
-    private static final Logger logger = LoggerFactory.getLogger(CommandState.class);
-    private String command;
-    private volatile boolean stop;
-    private volatile boolean killAllJobs;
-    private volatile List<Long> setupTimes;
-    private volatile List<Long> inputTimes;
-    private volatile List<Long> executionTimes;
-    private volatile List<Long> outputTimes;
-    private volatile double jobErrorRate;
-    private volatile double invocationPartialErrorRate;
-
-    private Map<String,Long> lastLoggedTimes;
+    private final String command;
+    private final Queue<Long> setupTimes;
+    private final Queue<Long> inputTimes;
+    private final Queue<Long> executionTimes;
+    private final Queue<Long> outputTimes;
+    private final AtomicReference<Double> jobErrorRate;
+    private final AtomicReference<Double> invocationPartialErrorRate;
+    private final AtomicBoolean killAllJobs;
+    private final ConcurrentHashMap<String, Long> lastLoggedTimes;
 
     public CommandState(String command) {
-
         this.command = command;
-        this.stop = false;
-        this.setupTimes = new ArrayList<Long>();
-        this.inputTimes = new ArrayList<Long>();
-        this.executionTimes = new ArrayList<Long>();
-        this.outputTimes = new ArrayList<Long>();
-        this.jobErrorRate = 0.0 ;
-        this.invocationPartialErrorRate = 0.0 ;
-        this.killAllJobs = false;
-
-        this.lastLoggedTimes = new HashMap<>();
-
-        new ReplicationMonitor().start();
+        setupTimes = new ConcurrentLinkedQueue<>();
+        inputTimes = new ConcurrentLinkedQueue<>();
+        executionTimes = new ConcurrentLinkedQueue<>();
+        outputTimes = new ConcurrentLinkedQueue<>();
+        jobErrorRate = new AtomicReference<>(0.0);
+        invocationPartialErrorRate = new AtomicReference<>(0.0);
+        killAllJobs = new AtomicBoolean(false);
+        lastLoggedTimes = new ConcurrentHashMap<>();
     }
 
-    public void replicateJobs() {
-
-        try {
-            long setupMedian = getMedianValue(setupTimes);
-            long inputMedian = getMedianValue(inputTimes);
-            long executionMedian = getMedianValue(executionTimes);
-            long outputMedian = getMedianValue(outputTimes);
-            logTimesIfNecessary(setupMedian, inputMedian, executionMedian, outputMedian);
-
-            JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
-            for (Job runningJob : jobDAO.getRunningByCommand(command)) {
-
-                List<Job> activeJobs = jobDAO.getActiveJobsByInvocationID(runningJob.getInvocationID());
-                List<Job> failedJobs = jobDAO.getFailedJobsByInvocationID(runningJob.getInvocationID());
-
-                // Only heal if all the active jobs are RUNNING and if
-                // none is an temporary state
-
-                if (canDoHealingForJobs(activeJobs, failedJobs)) {
-                    // if OK, do the healing on the running jobs
-                    doHealing(activeJobs, failedJobs, setupMedian, inputMedian, executionMedian, outputMedian);
-                }
-
-
-            }
-        } catch (DAOException ex) {
-            logger.error("Error looking for jobs to replicate: ", ex);
-        }
+    public void addSetupTime(long t) {
+        setupTimes.add(t);
     }
 
-    private List<Job> filterRunningJobs(List<Job> allInvocationJobs) {
-        List<Job> runningJobs = new ArrayList<> (allInvocationJobs);
-        runningJobs.removeIf(job -> job.getStatus() != GaswStatus.RUNNING);
-        return runningJobs;
+    public void addDownloadTime(long t) {
+        inputTimes.add(t);
     }
 
-    private boolean canDoHealingForJobs(
-            List<Job> activeJobs, List<Job> failedJobs) throws DAOException {
-
-        // do NOT do healing when
-        // - a job is in a temporary state
-        //      (replicating, restarting, finishing, being killed)
-        // - a job is active but not running (submitted, queued)
-
-        // first check on the jobs internal information to avoid database access
-        for (Job job : activeJobs) {
-            if (job.isReplicating() || job.getStatus() != GaswStatus.RUNNING) {
-                return false;
-            }
-        }
-        for (Job job : failedJobs) {
-            if (job.isReplicating()) {
-                return false;
-            }
-        }
-        // to do database access only when necessary, check for minor statuses
-        // only after checking all jobs internal information
-        for (Job job : activeJobs) {
-            if (hasFinished(job)) {
-                return false;
-            }
-        }
-
-        return true;
+    public void addExecutionTime(long t) {
+        executionTimes.add(t);
     }
 
-    private boolean hasFinished(Job job) throws DAOException {
-        JobMinorStatusDAO minorStatusDAO = DAOFactory.getDAOFactory().getJobMinorStatusDAO();
-        List<JobMinorStatus> minorStatuses = minorStatusDAO.getExecutionMinorStatus(job.getId());
-        return minorStatuses.stream().anyMatch(ms -> ms.getStatus() == GaswMinorStatus.Finished);
+    public void addUploadTime(long t) {
+        outputTimes.add(t);
     }
 
-    private void doHealing(List<Job> jobs, List<Job> failedJobs,
-                           long setupMedian, long inputMedian,
-                           long executionMedian, long outputMedian) {
-        try {
-            double blockedCoeff = HealingConfiguration.getInstance().getBlockedCoefficient();
-            JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
-
-            JobPhases bestJob = null;
-
-            for (Job job : jobs) {
-                JobPhases jobPhases = new JobPhases(job, setupMedian,
-                        inputMedian, executionMedian, outputMedian);
-
-                if (bestJob == null) {
-                    bestJob = jobPhases;
-                } else if (jobPhases.getEstimation() < bestJob.getEstimation()) {
-                    JobPhases formerBestJob = bestJob;
-                    bestJob = jobPhases;
-                    killReplicaIfNecessary(formerBestJob, bestJob);
-                } else {
-                    killReplicaIfNecessary(jobPhases, bestJob);
-                }
-            }
-            if (jobs.size() < HealingConfiguration.getInstance().getMaxReplicas()
-                    && (failedJobs.size() - 1) < GaswConfiguration.getInstance().getDefaultRetryCount()
-                    && bestJob != null && ((double) bestJob.getEstimation())
-                    / (setupMedian + inputMedian + executionMedian + outputMedian) >= blockedCoeff) {
-
-                Job job = bestJob.getJob();
-                logger.info("Replicating: {} (jobEstimation: {}) ", job.getId(), bestJob.getEstimation());
-                job.setStatus(GaswStatus.REPLICATE);
-                jobDAO.update(job);
-            }
-        } catch (DAOException | GaswException ex) {
-            logger.error("Error looking for jobs to replicate: ", ex);
-        }
+    public void updateErrorRates(double jobRate, double invocationRate) {
+        this.jobErrorRate.set(jobRate);
+        this.invocationPartialErrorRate.set(invocationRate);
     }
 
-    private void killReplicaIfNecessary(
-            JobPhases jobToEvaluatePhase,
-            JobPhases bestJobPhase) throws DAOException {
-        if (jobToEvaluatePhase.getLastStatusCode() >= bestJobPhase.getLastStatusCode()) {
-            // do nothing if the job is not in an equal or more advanced state
-            return;
-        }
-        double blockedCoeff = HealingConfiguration.getInstance().getBlockedCoefficient();
-        if (((double) jobToEvaluatePhase.getEstimation()) / bestJobPhase.getEstimation() >= blockedCoeff) {
-            Job jobToEvaluate = jobToEvaluatePhase.getJob();
-            Job bestJob = bestJobPhase.getJob();
-            logger.info("Killing replica: {} because {} is better", jobToEvaluate.getId(), bestJob.getId());
-            logger.info("Status: {} vs {}", jobToEvaluatePhase.getLastStatusCode(), bestJobPhase.getLastStatusCode());
-            logger.info("Estimations: {} vs {}",jobToEvaluatePhase.getEstimation(), bestJobPhase.getEstimation());
-            jobToEvaluate.setStatus(GaswStatus.KILL_REPLICA);
-            DAOFactory.getDAOFactory().getJobDAO().update(jobToEvaluate);
-        }
+    public void markKillAll() {
+        this.killAllJobs.set(true);
     }
 
-    private void logTimesIfNecessary(
-            long setupMedian, long inputMedian,
-            long executionMedian, long outputMedian) {
-
-        if (lastLoggedTimes.isEmpty()) {
-            printAndUpdateStats(
-                    setupMedian, inputMedian, executionMedian, outputMedian);
-        } else {
-            boolean needToLog = false;
-            int percentage =
-                    HealingConfiguration.getInstance().getStatsChangePercentage();
-            if (isChangeGreaterThanPercentage(
-                    lastLoggedTimes.get("setup"), setupMedian, percentage)) {
-                needToLog = true;
-            } else if (isChangeGreaterThanPercentage(
-                    lastLoggedTimes.get("input"), inputMedian, percentage)) {
-                needToLog = true;
-            } else if (isChangeGreaterThanPercentage(
-                    lastLoggedTimes.get("execution"), executionMedian, percentage)) {
-                needToLog = true;
-            } else if (isChangeGreaterThanPercentage(
-                    lastLoggedTimes.get("output"), outputMedian, percentage)) {
-                needToLog = true;
-            }
-
-            if (needToLog) {
-                printAndUpdateStats(
-                        setupMedian, inputMedian, executionMedian, outputMedian);
-            }
-        }
+    public boolean shouldKillAll() {
+        return killAllJobs.get();
     }
 
-    private boolean isChangeGreaterThanPercentage(
-            long v1, long v2, int percentage) {
+    public boolean hasEnoughData() {
+        return outputTimes.size() > 1;
+    }
 
-        double ratio = 1 -
-                percentage / 100.;
+    public String getCommand() {
+        return command;
+    }
+
+    public double getJobErrorRate() {
+        return jobErrorRate.get();
+    }
+
+    public double getInvocationPartialErrorRate() {
+        return invocationPartialErrorRate.get();
+    }
+
+    public Timings computeMedians() {
+        return new Timings(
+                getMedianValue(setupTimes),
+                getMedianValue(inputTimes),
+                getMedianValue(executionTimes),
+                getMedianValue(outputTimes)
+        );
+    }
+
+    public boolean shouldLogTimings(Timings current, int changePercentage) {
+        if (lastLoggedTimes.isEmpty()) return true;
+        return isChangeGreaterThanPercentage(lastLoggedTimes.get("setup"), current.setup(), changePercentage)
+                || isChangeGreaterThanPercentage(lastLoggedTimes.get("input"), current.input(), changePercentage)
+                || isChangeGreaterThanPercentage(lastLoggedTimes.get("execution"), current.execution(), changePercentage)
+                || isChangeGreaterThanPercentage(lastLoggedTimes.get("output"), current.output(), changePercentage);
+    }
+
+    public void updateLastLoggedTimings(Timings t) {
+        lastLoggedTimes.put("setup", t.setup());
+        lastLoggedTimes.put("input", t.input());
+        lastLoggedTimes.put("execution", t.execution());
+        lastLoggedTimes.put("output", t.output());
+    }
+
+    private long getMedianValue(Queue<Long> queue) {
+        if (queue.isEmpty()) return 0L;
+        List<Long> list = new ArrayList<>(queue);
+        Collections.sort(list);
+        int size = list.size();
+        return size % 2 == 1
+                ? list.get(size / 2)
+                : (list.get(size / 2 - 1) + list.get(size / 2)) / 2;
+    }
+
+    private boolean isChangeGreaterThanPercentage(long v1, long v2, int percentage) {
+        if (v1 == 0 && v2 == 0) return false;
+        double ratio = 1 - percentage / 100.;
         double max = Math.max(v1, v2);
         double min = Math.min(v1, v2);
-        return (min/max < ratio);
+        return (min / max) < ratio;
     }
 
-    private void printAndUpdateStats(
-            long setupMedian, long inputMedian,
-            long executionMedian, long outputMedian) {
-
-        lastLoggedTimes.put("setup", setupMedian);
-        lastLoggedTimes.put("input", inputMedian);
-        lastLoggedTimes.put("execution", executionMedian);
-        lastLoggedTimes.put("output", outputMedian);
-
-        logger.info("Logging stats: setupMedian: {} ; inputMedian: {} ; executionMedian: {}; outputMedian: {}",
-            setupMedian, inputMedian, executionMedian,  outputMedian);
-    }
-
-    private class ReplicationMonitor extends Thread {
-
-        @Override
-        public void run() {
-
-            while (!stop) {
-                try {
-                    if (killAllJobs) {
-                        killAllJobs();
-                    } else {
-                        if (outputTimes.size() > 1) {
-                            replicateJobs();
-                        }
-                    }
-                    sleep(HealingConfiguration.getInstance().getSleepTime());
-                    
-                } catch (InterruptedException ex) {
-                    logger.error("Error: ", ex);
-                }
-            }
-        }
-    }
-
-    private long getMedianValue(List<Long> list) {
-        Collections.sort(list);
-        if (list.size() % 2 == 1) {
-            return list.get(list.size() / 2);
-
-        } else {
-            int index = list.size() / 2;
-            return (list.get(index - 1) + list.get(index)) / 2;
-        }
-    }
-
-    public void addSetupTime(long time) {
-        this.setupTimes.add(time);
-    }
-
-    public void addDownloadTime(long time) {
-        this.inputTimes.add(time);
-    }
-
-    public void addExecutionTime(long time) {
-        this.executionTimes.add(time);
-    }
-
-    public void addUploadTime(long time) {
-        this.outputTimes.add(time);
-    }
-
-    private void computeJobErrorRate() throws DAOException {
-        JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
-        this.jobErrorRate = 100.0 * jobDAO.getFailedByCommand(this.command).size() / jobDAO.getJobsByCommand(this.command).size();
-        logger.info("Updated the jobErrorRate to {}", this.jobErrorRate);
-
-    }
-
-    private void computeInvocationPartialErrorRate() throws DAOException {
-        // TODO : after further analysis, also consider jobs running for more than MAX hours when computing invocationPartialErrorRate
-        int failures = 0;
-        JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
-        List<Integer> invocationIDs = jobDAO.getInvocationsByCommand(this.command);
-        for (int invocation : invocationIDs) {
-            if (jobDAO.getFailedJobsByInvocationID(invocation).size() >= 1) {
-                failures++;
-            }
-        }
-        this.invocationPartialErrorRate = 100.0 * failures / invocationIDs.size();
-        logger.info("Updated the invocationPartialErrorRate to {}", this.invocationPartialErrorRate);
-
-    }
-
-    public void updateErrorRatesAndKillDecision() throws DAOException {
-        computeJobErrorRate();
-        computeInvocationPartialErrorRate();
-        if (DAOFactory.getDAOFactory().getJobDAO().getInvocationsByCommand(this.command).size() >= HealingConfiguration.getInstance().getMinInvocations() ) {
-            if (this.jobErrorRate >= HealingConfiguration.getInstance().getMaxErrorJobPercentage() ||
-                    this.invocationPartialErrorRate >= HealingConfiguration.getInstance().getMaxErrorInvocationPercentage()) {
-                this.killAllJobs = true;
-                logger.info("Attention, updating killing decision to true. Nm min invocations are {} , job error rate is {} and invocation error rate is {}",
-                    HealingConfiguration.getInstance().getMinInvocations(), this.jobErrorRate, this.invocationPartialErrorRate);
-            }
-        }
-
-    }
-
-    private void killAllJobs() {
-        logger.info("Killing all jobs of type {}", this.command);
-        try {
-            JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
-            List<Integer> invocationIDs = jobDAO.getInvocationsByCommand(this.command);
-            for (int invocation : invocationIDs) {
-                killInvocationJobs(invocation);
-            }
-            if(jobDAO.getActiveJobs().isEmpty()){
-                //This is needed for certain Moteur workflows (e.g., GATE) for which the workflow is not completed when there are no jobs left
-                //TODO: remove this when the completion issue is fixed on the workflow side
-                logger.info("Attention, no active jobs left, stopping the healing now.");
-                terminate();
-            }
-        } catch (DAOException ex) {
-            logger.error("Error killing jobs: ", ex);
-        }
-    }
-
-    private void killInvocationJobs (int invocation) {
-        logger.info("Killing jobs of invocation {}", invocation);
-        try {
-            JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
-            GaswStatus status = GaswStatus.KILL;
-            List<Job> activeJobs = jobDAO.getActiveJobsByInvocationID(invocation);
-            if ((activeJobs != null) && (!activeJobs.isEmpty())) {
-                for (Job job : activeJobs) {
-                    job.setStatus(status);
-                    job.setBeingKilled(true);
-                    jobDAO.update(job);
-                    logger.info("Setting status of job {} to {}", job.getId(), status);
-                    //all subsequent jobs are replica, so kill them as such
-                    status = GaswStatus.KILL_REPLICA;
-                }
-            } else {
-                if (jobDAO.getNumberOfCompletedJobsByInvocationID(invocation) == 0) {
-                    handleHeldJobs(invocation);
-                }
-            }
-
-        } catch (DAOException ex) {
-            logger.error("Error killing jobs for invocation: {}", invocation, ex);
-        }
-    }
-
-    private void handleHeldJobs (int invocationID){
-        logger.info("Handle Held jobs for invocation {}", invocationID);
-        try {
-            JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
-            List<Job> failedJobs = jobDAO.getFailedJobsByInvocationID(invocationID);
-            if ((failedJobs!=null) && (!failedJobs.isEmpty())) {
-                for (Job job : failedJobs) {
-                    GaswStatus jobStatus = job.getStatus();
-                    if ((jobStatus == GaswStatus.ERROR_HELD) || (jobStatus == GaswStatus.STALLED_HELD)) {
-                        GaswStatus newStatus = GaswStatus.ERROR;
-                        GaswExitCode exitCode = GaswExitCode.EXECUTION_FAILED;
-                        if (jobStatus == GaswStatus.STALLED_HELD) {
-                            newStatus = GaswStatus.STALLED;
-                            exitCode = GaswExitCode.EXECUTION_STALLED;
-                        }
-                        job.setBeingKilled(true);
-                        job.setStatus(newStatus);
-                        jobDAO.update(job);
-                        GaswOutput gaswOutput;
-                        GaswOutput previousGaswOutput = GaswNotification.getInstance().getGaswOutputFromLastFailedJob(job.getFileName() + ".jdl");
-                        if (previousGaswOutput !=  null) {
-                            logger.info("Getting previous StdOutErr files for held job instance: {}", job.getFileName());
-                            gaswOutput = new GaswOutput(job.getFileName() + ".jdl", exitCode, job.getExitMessage(),
-                                    null, previousGaswOutput.getAppStdOut(), previousGaswOutput.getAppStdErr(), previousGaswOutput.getStdOut(), previousGaswOutput.getStdErr());
-                        } else {
-                            logger.info("No previous StdOutErr files for held job instance: {}. Setting it to null.", job.getFileName());
-                            gaswOutput = new GaswOutput(job.getFileName() + ".jdl", exitCode, job.getExitMessage(),
-                                    null, null, null, null, null);
-                        }
-                        GaswNotification.getInstance().addFinishedJob(gaswOutput);
-                        logger.info("Handled Held job {}", job.getId());
-                    }
-                }
-            }
-        } catch (DAOException ex) {
-            logger.error("Error handling held job: ", ex);
-        }
-    }
-
-    public void terminate() {
-
-        this.stop = true;
+    public record Timings(long setup, long input, long execution, long output) {
+        public long total() { return setup + input + execution + output; }
     }
 }
