@@ -56,14 +56,15 @@ public class HealingService {
             double invocationPartialErrorRate = invocations.isEmpty() ? 0.0 : 100.0 * failures / invocations.size();
 
             state.updateErrorRates(jobErrorRate, invocationPartialErrorRate);
-            logger.info("Error rates for command [{}] — job error rate : {}%, invocation partial error rate : {}%", command, jobErrorRate, invocationPartialErrorRate);
+            logger.info("Error rates for command [{}] — job error rate : {}%, invocation partial error rate : {}%",
+                    command, getFormattedNumber(jobErrorRate, 2), getFormattedNumber(invocationPartialErrorRate, 2));
             if (invocations.size() >= healingConfiguration.getMinInvocations()) {
                 boolean breached = jobErrorRate >= healingConfiguration.getMaxErrorJobPercentage() ||
                         invocationPartialErrorRate >= healingConfiguration.getMaxErrorInvocationPercentage();
                 if (breached) {
                     state.markKillAll();
                     logger.info("Attention, updating killing decision to true. Nb min invocations are {} , job error rate is {} and invocation error rate is {}",
-                            healingConfiguration.getMinInvocations(), jobErrorRate, invocationPartialErrorRate);
+                            healingConfiguration.getMinInvocations(), getFormattedNumber(jobErrorRate, 2), getFormattedNumber(invocationPartialErrorRate, 2));
                 }
             }
         } catch (DAOException ex) {
@@ -91,21 +92,26 @@ public class HealingService {
         }
     }
 
-    public void killAllJobs(String command) {
-        logger.info("Killing all jobs for command [{}]", command);
+    public boolean killAllJobs(CommandState commandState) {
+        logger.info("Killing all jobs for command [{}]", commandState.getCommand());
         try {
-            for (int invocationId : jobDAO.getInvocationsByCommand(command)) {
+            for (int invocationId : jobDAO.getInvocationsByCommand(commandState.getCommand())) {
                 killInvocationJobs(invocationId);
             }
 
-            if (jobDAO.getActiveJobs().isEmpty()) {
+            // Check only for active jobs of the current command, not all jobs in the system.
+            // This prevents an infinite loop when other commands still have active jobs.
+            if (jobDAO.getRunningByCommand(commandState.getCommand()).isEmpty()) {
                 //This is needed for certain Moteur workflows (e.g., GATE) for which the workflow is not completed when there are no jobs left
                 //TODO: remove this when the completion issue is fixed on the workflow side
-                logger.info("No active jobs remain for [{}] — healing complete.", command);
+                logger.info("No active jobs remain for [{}] — healing complete.", commandState.getCommand());
+                return true;
             }
         } catch (DAOException ex) {
-            logger.error("Error killing jobs for command [{}]: ", command, ex);
+            logger.error("Error killing jobs for command [{}]: ", commandState.getCommand(), ex);
         }
+
+        return false;
     }
 
     private boolean canDoHealingForJobs(List<Job> activeJobs, List<Job> failedJobs) throws DAOException {
@@ -338,6 +344,10 @@ public class HealingService {
             logger.info("Timings medians for [{}] — setup: {}, input: {}, execution: {}, output: {}",
                     state.getCommand(), medians.setup(), medians.input(), medians.execution(), medians.output());
         }
+    }
+
+    private String getFormattedNumber(double number, int decimals) {
+        return String.format("%." + decimals + "f", number);
     }
 }
 
