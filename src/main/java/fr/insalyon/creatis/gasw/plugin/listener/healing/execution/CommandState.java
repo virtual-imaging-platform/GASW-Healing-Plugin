@@ -48,8 +48,10 @@ public class CommandState {
     private final Queue<Long> outputTimes;
     private final AtomicReference<Double> jobErrorRate;
     private final AtomicReference<Double> invocationPartialErrorRate;
-    private final AtomicBoolean killAllJobs;
     private final ConcurrentHashMap<String, Long> lastLoggedTimes;
+    private final AtomicBoolean killAllJobs;
+    private final AtomicBoolean allJobsEnded;
+
 
     public CommandState(String command) {
         this.command = command;
@@ -59,8 +61,9 @@ public class CommandState {
         outputTimes = new ConcurrentLinkedQueue<>();
         jobErrorRate = new AtomicReference<>(0.0);
         invocationPartialErrorRate = new AtomicReference<>(0.0);
-        killAllJobs = new AtomicBoolean(false);
         lastLoggedTimes = new ConcurrentHashMap<>();
+        killAllJobs = new AtomicBoolean(false);
+        allJobsEnded = new AtomicBoolean(false);
     }
 
     public void addSetupTime(long t) {
@@ -82,14 +85,6 @@ public class CommandState {
     public void updateErrorRates(double jobRate, double invocationRate) {
         this.jobErrorRate.set(jobRate);
         this.invocationPartialErrorRate.set(invocationRate);
-    }
-
-    public void markKillAll() {
-        this.killAllJobs.set(true);
-    }
-
-    public boolean shouldKillAll() {
-        return killAllJobs.get();
     }
 
     public boolean hasEnoughData() {
@@ -153,4 +148,26 @@ public class CommandState {
     public record Timings(long setup, long input, long execution, long output) {
         public long total() { return setup + input + execution + output; }
     }
+
+    public void markKillAll() {
+        this.killAllJobs.set(true);
+    }
+
+    public boolean shouldKillAll() {
+        return killAllJobs.get();
+    }
+
+    public void markAllJobsEnded() {
+        this.allJobsEnded.set(true);
+    }
+
+    public boolean allJobsEnded() {
+        return allJobsEnded.get();
+    }
+
+    public void terminate() {
+        this.allJobsEnded.set(true);
+    }
+
+
 }

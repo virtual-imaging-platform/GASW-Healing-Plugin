@@ -37,7 +37,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.PropertySource;
 
 @Configuration
-@PropertySource("classpath:application.properties")
+@PropertySource("classpath:healing.properties")
 public class HealingConfiguration {
 
     @Value("${plugin.healing.sleep-time}")

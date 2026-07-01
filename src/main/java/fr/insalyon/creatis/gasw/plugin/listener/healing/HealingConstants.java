@@ -35,5 +35,4 @@ package fr.insalyon.creatis.gasw.plugin.listener.healing;
 public class HealingConstants {
 
     public final static String NAME = "Self-Healing";
-    public final static String ENTITY_PACKAGE = "fr.insalyon.creatis.gasw.plugin.listener.healing";
 }

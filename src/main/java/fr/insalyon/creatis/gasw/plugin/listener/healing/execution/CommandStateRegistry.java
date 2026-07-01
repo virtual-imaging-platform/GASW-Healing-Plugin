@@ -24,12 +24,20 @@ public class CommandStateRegistry {
         return states.computeIfAbsent(command, CommandState::new);
     }
 
-    @Scheduled(fixedDelayString = "${healing.sleep-time}", timeUnit = TimeUnit.SECONDS)
+    public void terminateAll() {
+        for (CommandState state : states.values()) {
+            state.terminate();
+        }
+    }
+
+    @Scheduled(fixedDelayString = "${plugin.healing.sleep-time}", timeUnit = TimeUnit.SECONDS)
     public void run() {
         for (CommandState state : states.values()) {
             try {
+                if (state.allJobsEnded()) continue;
+
                 if (state.shouldKillAll()) {
-                    healingService.killAllJobs(state.getCommand());
+                    healingService.killAllJobs(state);
                 } else if (state.hasEnoughData()) {
                     healingService.replicateJobs(state);
                 }

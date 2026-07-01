@@ -47,7 +47,6 @@ import java.util.regex.Pattern;
 
 import fr.insalyon.creatis.gasw.plugin.listener.healing.execution.CommandStateRegistry;
 import fr.insalyon.creatis.gasw.plugin.listener.healing.execution.HealingService;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -56,7 +55,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class HealingListener implements ListenerPlugin {
 
-    private static final Pattern JOB_ID_PATTERN = Pattern.compile("-[0-9]+(\\.jdl)?$");
+    public static final Pattern JOB_ID_PATTERN = Pattern.compile("-[0-9]+(\\.jdl)?$");
 
     private final Logger logger = LoggerFactory.getLogger(getClass());
 
@@ -70,21 +69,9 @@ public class HealingListener implements ListenerPlugin {
         this.commandStateRegistry = commandStateRegistry;
     }
 
-    @PostConstruct
-    public void start() {
-        // fetch version from maven generated file
-        logger.info("Loading Self-Healing GASW Plugin version {}",
-                getClass().getPackage().getImplementationVersion());
-    }
-
     @Override
     public String getName() {
         return HealingConstants.NAME;
-    }
-
-    @Override
-    public String getEntityPackage() {
-        return HealingConstants.ENTITY_PACKAGE;
     }
 
     @Override
@@ -95,7 +82,7 @@ public class HealingListener implements ListenerPlugin {
     @Override
     public void jobFinished(GaswOutput gaswOutput) {
         logger.info("Job {} finished with exit code {}", gaswOutput.getJobID(), gaswOutput.getExitCode());
-        // Attention, gaswOutput.getJobID() returns the Moteur job ID in the format command-4072786226984043.jdl
+        // Attention, gaswOutput.getJobID() returns the Moteur job ID in the format command-4072786226984043
         String jobID = gaswOutput.getJobID();
         String command = JOB_ID_PATTERN.matcher(jobID).replaceAll("");
         CommandState cs = commandStateRegistry.getOrCreate(command);
@@ -139,6 +126,8 @@ public class HealingListener implements ListenerPlugin {
     }
 
     @Override
-    public void terminate() {}
+    public void terminate() {
+        commandStateRegistry.terminateAll();
+    }
 
 }
