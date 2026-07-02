@@ -97,7 +97,7 @@ public class HealingListener implements ListenerPlugin {
             logger.info("Job {} finished with exit code {}", gaswOutput.getJobID(), gaswOutput.getExitCode());
             // Attention, gaswOutput.getJobID() returns the Moteur job ID in the format command-4072786226984043.jdl
             String jobID = gaswOutput.getJobID();
-            String command = jobID.replaceAll("(-[0-9]+.jdl)$", "");
+            String command = jobID.replaceAll("-[0-9]+(\\.jdl)?$", "");
             CommandState cs;
             if (commandsMap.containsKey(command)) {
                 cs = commandsMap.get(command);
