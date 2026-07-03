@@ -34,130 +34,100 @@
  */
 package fr.insalyon.creatis.gasw.plugin.listener.healing;
 
-import fr.insalyon.creatis.gasw.GaswException;
 import fr.insalyon.creatis.gasw.GaswExitCode;
 import fr.insalyon.creatis.gasw.GaswOutput;
 import fr.insalyon.creatis.gasw.bean.Job;
 import fr.insalyon.creatis.gasw.bean.JobMinorStatus;
 import fr.insalyon.creatis.gasw.dao.DAOException;
-import fr.insalyon.creatis.gasw.dao.DAOFactory;
 import fr.insalyon.creatis.gasw.dao.JobMinorStatusDAO;
 import fr.insalyon.creatis.gasw.execution.GaswMinorStatus;
 import fr.insalyon.creatis.gasw.plugin.ListenerPlugin;
 import fr.insalyon.creatis.gasw.plugin.listener.healing.execution.CommandState;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.regex.Pattern;
 
+import fr.insalyon.creatis.gasw.plugin.listener.healing.execution.CommandStateRegistry;
+import fr.insalyon.creatis.gasw.plugin.listener.healing.execution.HealingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
 
-import net.xeoh.plugins.base.annotations.PluginImplementation;
 
-@PluginImplementation
+@Service
 public class HealingListener implements ListenerPlugin {
 
-    private static final Logger logger = LoggerFactory.getLogger(HealingListener.class);
-    private volatile Map<String, CommandState> commandsMap;
+    public static final Pattern JOB_ID_PATTERN = Pattern.compile("-[0-9]+(\\.jdl)?$");
+
+    private final Logger logger = LoggerFactory.getLogger(getClass());
+
+    private final JobMinorStatusDAO jobMinorStatusDAO;
+    private final HealingService healingService;
+    private final CommandStateRegistry commandStateRegistry;
+
+    public HealingListener(JobMinorStatusDAO jobMinorStatusDAO, HealingService healingService, CommandStateRegistry commandStateRegistry) {
+        this.jobMinorStatusDAO = jobMinorStatusDAO;
+        this.healingService = healingService;
+        this.commandStateRegistry = commandStateRegistry;
+    }
 
     @Override
-    public String getPluginName() {
+    public String getName() {
         return HealingConstants.NAME;
     }
 
     @Override
-    public void load() throws GaswException {
-        // fetch version from maven generated file
-        logger.info("Loading Self-Healing GASW Plugin version {}",
-                getClass().getPackage().getImplementationVersion());
-        
-        HealingConfiguration.getInstance();
-        commandsMap = new HashMap<String, CommandState>();
+    public void jobSubmitted(Job job) {
+        commandStateRegistry.getOrCreate(job.getCommand());
     }
 
     @Override
-    public List<Class> getPersistentClasses() throws GaswException {
-        List<Class> list = new ArrayList<Class>();
-        return list;
-    }
-
-    @Override
-    public void jobSubmitted(Job job) throws GaswException {
-        String command = job.getCommand();
-
-        if ( ! commandsMap.containsKey(command)) {
-            commandsMap.put(command, new CommandState(command));
+    public void jobFinished(GaswOutput gaswOutput) {
+        logger.info("Job {} finished with exit code {}", gaswOutput.getJobID(), gaswOutput.getExitCode());
+        // Attention, gaswOutput.getJobID() returns the Moteur job ID in the format command-4072786226984043
+        String jobID = gaswOutput.getJobID();
+        String command = JOB_ID_PATTERN.matcher(jobID).replaceAll("");
+        CommandState cs = commandStateRegistry.getOrCreate(command);
+        GaswExitCode code = gaswOutput.getExitCode();
+        if (code != GaswExitCode.SUCCESS && code != GaswExitCode.EXECUTION_CANCELED) {
+            try {
+                healingService.computeAndUpdateErrorRates(cs);
+            } catch (DAOException ex) {
+                logger.error("Error computing error rates", ex);
+            }
         }
     }
 
     @Override
-    public void jobFinished(GaswOutput gaswOutput) throws GaswException {
-        try {
-            logger.info("Job {} finished with exit code {}", gaswOutput.getJobID(), gaswOutput.getExitCode());
-            // Attention, gaswOutput.getJobID() returns the Moteur job ID in the format command-4072786226984043.jdl
-            String jobID = gaswOutput.getJobID();
-            String command = jobID.replaceAll("-[0-9]+(\\.jdl)?$", "");
-            CommandState cs;
-            if (commandsMap.containsKey(command)) {
-                cs = commandsMap.get(command);
-            } else {
-                cs = new CommandState(command);
-                commandsMap.put(command, cs);
-            }
-            if (gaswOutput.getExitCode() != GaswExitCode.SUCCESS && gaswOutput.getExitCode() != GaswExitCode.EXECUTION_CANCELED) {
-                cs.updateErrorRatesAndKillDecision();
-            }
-        } catch (DAOException ex) {
-            logger.error("Error computing error rates", ex);
-        }
-    }
+    public void jobStatusChanged(Job job) {}
 
     @Override
-    public void jobStatusChanged(Job job) throws GaswException {
-    }
-
-    @Override
-    public void jobMinorStatusReported(JobMinorStatus jobMinorStatus) throws GaswException {
-
+    public void jobMinorStatusReported(JobMinorStatus jobMinorStatus) {
+        Job job = jobMinorStatus.getJob();
+        logger.info("Minor Status Reported: {} - {}", job.getId(), jobMinorStatus.getStatus().name());
+        CommandState cs = commandStateRegistry.getOrCreate(job.getCommand());
         try {
-            logger.info("Minor Status Reported: {} - {}", jobMinorStatus.getJob().getId(), jobMinorStatus.getStatus().name());
-            Job job = jobMinorStatus.getJob();
-            CommandState cs;
-            if (commandsMap.containsKey(job.getCommand())) {
-                cs = commandsMap.get(job.getCommand());
-            } else {
-                cs = new CommandState(job.getCommand());
-                commandsMap.put(job.getCommand(), cs);
-            }
-
-            JobMinorStatusDAO minorStatusDAO = DAOFactory.getDAOFactory().getJobMinorStatusDAO();
-
             switch (jobMinorStatus.getStatus()) {
                 case Inputs:
-                    cs.addSetupTime(minorStatusDAO.getDateDiff(job.getId(), GaswMinorStatus.Started, GaswMinorStatus.Inputs));
+                    cs.addSetupTime(jobMinorStatusDAO.getDateDiff(job.getId(), GaswMinorStatus.Started, GaswMinorStatus.Inputs));
                     break;
                 case Application:
-                    cs.addDownloadTime(minorStatusDAO.getDateDiff(job.getId(), GaswMinorStatus.Inputs, GaswMinorStatus.Application));
+                    cs.addDownloadTime(jobMinorStatusDAO.getDateDiff(job.getId(), GaswMinorStatus.Inputs, GaswMinorStatus.Application));
                     break;
                 case Outputs:
-                    cs.addExecutionTime(minorStatusDAO.getDateDiff(job.getId(), GaswMinorStatus.Application, GaswMinorStatus.Outputs));
+                    cs.addExecutionTime(jobMinorStatusDAO.getDateDiff(job.getId(), GaswMinorStatus.Application, GaswMinorStatus.Outputs));
                     break;
                 case Finished:
-                    cs.addUploadTime(minorStatusDAO.getDateDiff(job.getId(), GaswMinorStatus.Outputs, GaswMinorStatus.Finished));
+                    cs.addUploadTime(jobMinorStatusDAO.getDateDiff(job.getId(), GaswMinorStatus.Outputs, GaswMinorStatus.Finished));
                     break;
                 default:
             }
         } catch (DAOException ex) {
-            logger.error("Error updating minor status", ex);
+            logger.error("Error updating minor status for job {}", job.getId(), ex);
         }
     }
 
     @Override
-    public void terminate() throws GaswException {
-
-        for (CommandState cs : commandsMap.values()) {
-            cs.terminate();
-        }
+    public void terminate() {
+        commandStateRegistry.terminateAll();
     }
+
 }

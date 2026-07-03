@@ -32,60 +32,28 @@
  */
 package fr.insalyon.creatis.gasw.plugin.listener.healing;
 
-import fr.insalyon.creatis.gasw.GaswConfiguration;
-import fr.insalyon.creatis.gasw.GaswException;
-import org.apache.commons.configuration.ConfigurationException;
-import org.apache.commons.configuration.PropertiesConfiguration;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.PropertySource;
 
+@Configuration
+@PropertySource("classpath:healing.properties")
 public class HealingConfiguration {
 
-    private static final Logger logger = LoggerFactory.getLogger(HealingConfiguration.class);
-    private static HealingConfiguration instance;
+    @Value("${plugin.healing.sleep-time}")
     private int sleepTime;
+    @Value("${plugin.healing.blocked-coefficient}")
     private double blockedCoefficient;
+    @Value("${plugin.healing.max-replicas}")
     private int maxReplicas;
+    @Value("${plugin.healing.stats.change-percentage}")
     private int statsChangePercentage;
+    @Value("${plugin.healing.stats.max-error-job-percentage}")
     private double maxErrorJobPercentage;
+    @Value("${plugin.healing.stats.max-error-invocation-percentage}")
     private double maxErrorInvocationPercentage;
+    @Value("${plugin.healing.min-invocations}")
     private int minInvocations;
-
-    public static HealingConfiguration getInstance() {
-
-        if (instance == null) {
-            instance = new HealingConfiguration();
-        }
-        return instance;
-    }
-
-    private HealingConfiguration() {
-
-        try {
-            PropertiesConfiguration config = GaswConfiguration.getInstance().getPropertiesConfiguration();
-
-            sleepTime = config.getInt(HealingConstants.LAB_SLEEP_TIME, 15) * 1000;
-            blockedCoefficient = config.getDouble(HealingConstants.LAB_BLOCKED_COEFFICIENT, 2);
-            maxReplicas = config.getInt(HealingConstants.LAB_MAX_REPLICAS, 2);
-            statsChangePercentage = config.getInt(HealingConstants.LAB_STATS_CHANGE_PERCENTAGE, 10);
-            maxErrorJobPercentage = config.getDouble(HealingConstants.LAB_MAX_ERROR_JOB_PERCENTAGE, 60);
-            maxErrorInvocationPercentage = config.getDouble(HealingConstants.LAB_MAX_ERROR_INVOCATION_PERCENTAGE, 99.9);
-            minInvocations = config.getInt(HealingConstants.LAB_MIN_INVOCATIONS, 100);
-
-            config.setProperty(HealingConstants.LAB_SLEEP_TIME, sleepTime / 1000);
-            config.setProperty(HealingConstants.LAB_BLOCKED_COEFFICIENT, blockedCoefficient);
-            config.setProperty(HealingConstants.LAB_MAX_REPLICAS, maxReplicas);
-            config.setProperty(HealingConstants.LAB_STATS_CHANGE_PERCENTAGE, statsChangePercentage);
-            config.setProperty(HealingConstants.LAB_MAX_ERROR_JOB_PERCENTAGE, maxErrorJobPercentage);
-            config.setProperty(HealingConstants.LAB_MAX_ERROR_INVOCATION_PERCENTAGE, maxErrorInvocationPercentage);
-            config.setProperty(HealingConstants.LAB_MIN_INVOCATIONS, minInvocations);
-
-            config.save();
-
-        } catch (ConfigurationException | GaswException ex) {
-            logger.error("Error initializing HealingConfiguration: ", ex);
-        }
-    }
 
     public int getSleepTime() {
         return sleepTime;
