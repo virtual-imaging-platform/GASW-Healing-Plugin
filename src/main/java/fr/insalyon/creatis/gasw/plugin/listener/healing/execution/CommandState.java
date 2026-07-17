@@ -409,7 +409,7 @@ public class CommandState {
                         job.setStatus(newStatus);
                         jobDAO.update(job);
                         GaswOutput gaswOutput;
-                        GaswOutput previousGaswOutput = GaswNotification.getInstance().getGaswOutputFromLastFailedJob(job.getFileName() + ".jdl");
+                        GaswOutput previousGaswOutput = GaswNotification.getInstance().getGaswOutputFromLastFailedJob(job.getFileName());
                         if (previousGaswOutput !=  null) {
                             logger.info("Getting previous StdOutErr files for held job instance: {}", job.getFileName());
                             gaswOutput = new GaswOutput(job.getFileName(), exitCode, job.getExitMessage(),
