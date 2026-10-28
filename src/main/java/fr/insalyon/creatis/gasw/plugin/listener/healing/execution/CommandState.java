@@ -58,6 +58,11 @@ public class CommandState {
 
     private Map<String,Long> lastLoggedTimes;
 
+    // InvocationID -> current resource index
+    private Map<Integer, Integer> invocationResourceIndex;
+    // InvocationID -> retry count on current resource
+    private Map<Integer, Integer> invocationRetryCount;
+
     public CommandState(String command) {
 
         this.command = command;
@@ -71,6 +76,9 @@ public class CommandState {
         this.killAllJobs = false;
 
         this.lastLoggedTimes = new HashMap<>();
+
+        this.invocationResourceIndex = new HashMap<>();
+        this.invocationRetryCount = new HashMap<>();
 
         new ReplicationMonitor().start();
     }
@@ -399,6 +407,13 @@ public class CommandState {
                 for (Job job : failedJobs) {
                     GaswStatus jobStatus = job.getStatus();
                     if ((jobStatus == GaswStatus.ERROR_HELD) || (jobStatus == GaswStatus.STALLED_HELD)) {
+                        // Try resource fallback first
+                        if (tryResourceFallback(job, invocationID)) {
+                            logger.info("Job {} rescheduled to fallback resource", job.getId());
+                            continue;
+                        }
+
+                        // If no fallback available, mark as final error/stalled
                         GaswStatus newStatus = GaswStatus.ERROR;
                         GaswExitCode exitCode = GaswExitCode.EXECUTION_FAILED;
                         if (jobStatus == GaswStatus.STALLED_HELD) {
@@ -426,6 +441,64 @@ public class CommandState {
             }
         } catch (DAOException ex) {
             logger.error("Error handling held job: ", ex);
+        }
+    }
+
+    private boolean tryResourceFallback(Job job, int invocationID) throws DAOException {
+        try {
+            List<String> fallbackResources = GaswConfiguration.getInstance().getFallbackResources();
+            if (fallbackResources == null || fallbackResources.isEmpty()) {
+                logger.debug("No fallback resources configured");
+                return false;
+            }
+
+            int currentRetryCount = invocationRetryCount.getOrDefault(invocationID, 0);
+            int threshold = GaswConfiguration.getInstance().getFallbackRetryThreshold();
+            if (currentRetryCount < threshold) {
+                // Increment retry count for current resource
+                invocationRetryCount.put(invocationID, currentRetryCount + 1);
+                logger.debug("Retry count {} for invocation {}, threshold {}", currentRetryCount + 1, invocationID, threshold);
+                return false;
+            }
+
+            // Threshold reached, try next resource
+            int currentResourceIndex = invocationResourceIndex.getOrDefault(invocationID, 0);
+            if (currentResourceIndex >= fallbackResources.size() - 1) {
+                logger.debug("No more fallback resources available for invocation {}", invocationID);
+                return false;
+            }
+
+            // Move to next resource
+            int nextResourceIndex = currentResourceIndex + 1;
+            String nextResourceType = fallbackResources.get(nextResourceIndex);
+            String currentExecutor = job.getExecutor();
+            if (nextResourceType == null || nextResourceType.isEmpty()) {
+                logger.warn("Cannot switch to resource - type is missing at index {}", nextResourceIndex);
+                return false;
+            }
+
+            if (nextResourceType.equals(currentExecutor)) {
+                logger.warn("Cannot switch to resource - same executor as current ({})", currentExecutor);
+                return false;
+            }
+
+            // Update job for resubmission
+            JobDAO jobDAO = DAOFactory.getDAOFactory().getJobDAO();
+            job.setExecutor(nextResourceType);
+            job.setStatus(GaswStatus.RESCHEDULE);
+            jobDAO.update(job);
+
+            // Update state tracking
+            invocationResourceIndex.put(invocationID, nextResourceIndex);
+            // Reset retry count for new resource
+            invocationRetryCount.put(invocationID, 0);
+
+            logger.info("Switched job {} from executor {} to {}",
+                    job.getId(), currentExecutor, nextResourceType);
+            return true;
+        } catch (DAOException | GaswException ex) {
+            logger.error("Error trying resource fallback for job {}: ", job.getId(), ex);
+            return false;
         }
     }
 
